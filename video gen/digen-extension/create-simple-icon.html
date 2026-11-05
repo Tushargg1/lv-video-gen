@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><title>Create Icon</title></head>
+<body>
+<canvas id="canvas" width="128" height="128"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// Draw blue background
+ctx.fillStyle = '#2563eb';
+ctx.fillRect(0, 0, 128, 128);
+
+// Draw white film frame
+ctx.fillStyle = 'white';
+ctx.fillRect(24, 32, 80, 64);
+
+// Draw blue inner frame
+ctx.fillStyle = '#2563eb';
+ctx.fillRect(32, 40, 64, 48);
+
+// Draw white circles (sprocket holes)
+ctx.fillStyle = 'white';
+ctx.beginPath();
+ctx.arc(32, 48, 4, 0, Math.PI * 2);
+ctx.arc(32, 72, 4, 0, Math.PI * 2);
+ctx.arc(96, 48, 4, 0, Math.PI * 2);
+ctx.arc(96, 72, 4, 0, Math.PI * 2);
+ctx.fill();
+
+// Draw play button
+ctx.beginPath();
+ctx.moveTo(54, 56);
+ctx.lineTo(54, 72);
+ctx.lineTo(70, 64);
+ctx.closePath();
+ctx.fill();
+
+// Download as PNG
+const link = document.createElement('a');
+link.download = 'icon128.png';
+link.href = canvas.toDataURL();
+document.body.appendChild(link);
+console.log('Right-click the canvas and save as PNG, or the page will auto-download');
+setTimeout(() => link.click(), 500);
+</script>
+<p>Right-click the canvas above and "Save image as..." to save as icon128.png</p>
+</body>
+</html>

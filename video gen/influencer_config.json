@@ -14,5 +14,6 @@
     "facebook"
   ],
   "scheduler_enabled": true,
+  "server_port": 3005,
   "cloud_api_url": "https://nextjs-poster-eta.vercel.app"
 }

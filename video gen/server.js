@@ -565,7 +565,7 @@ app.post('/api/influencer/run', (req, res) => {
         });
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
     console.log(`\n==============================================`);
     console.log(`🌟 Local Automation UI is running!`);

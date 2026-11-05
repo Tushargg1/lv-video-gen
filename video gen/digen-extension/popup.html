@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digen AI Automation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 380px;
+            padding: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #18181b;
+            color: #f4f4f5;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #fafafa;
+        }
+
+        .tag {
+            font-size: 11px;
+            background: #8b5cf6;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: #a1a1aa;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .preset-btn {
+            padding: 8px 10px;
+            background: #27272a;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            text-align: left;
+            font-size: 12px;
+            color: #e4e4e7;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+
+        .preset-btn:hover {
+            background: #3f3f46;
+            border-color: #8b5cf6;
+            color: #fff;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 60px;
+            padding: 10px;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            resize: vertical;
+            margin-bottom: 12px;
+            background: #09090b;
+            color: #fafafa;
+            line-height: 1.4;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #8b5cf6;
+            box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        button.btn-primary {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: linear-gradient(135deg, #8b5cf6, #6366f1);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        button.btn-primary:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+
+        button.btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.btn-secondary {
+            padding: 10px 14px;
+            background: #27272a;
+            color: #a1a1aa;
+            border: 1px solid #3f3f46;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        button.btn-secondary:hover {
+            background: #3f3f46;
+            color: #fff;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            margin-bottom: 10px;
+            display: none;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border: 1px solid #059669;
+            display: block;
+        }
+
+        .status.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid #dc2626;
+            display: block;
+        }
+
+        .status.info {
+            background: rgba(139, 92, 246, 0.15);
+            color: #c084fc;
+            border: 1px solid #7c3aed;
+            display: block;
+        }
+
+        .status.warning {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border: 1px solid #d97706;
+            display: block;
+        }
+
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 10px;
+            border-top: 1px solid #27272a;
+            font-size: 11px;
+            color: #71717a;
+        }
+
+        .footer label {
+            margin: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-transform: none;
+            color: #a1a1aa;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 Affilation Video Gen</h1>
+        <span class="tag">Active</span>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <label>Quick Presets</label>
+    <div class="preset-grid" style="grid-template-columns: 1fr;">
+        <button class="preset-btn" data-img="A cute robot toy standing in a neon-lit room, high quality 3D render" data-vid="Walking and dancing, colorful LED lights flashing, smooth animation, playful movements, 4K quality">
+            🤖 Dancing Robot
+        </button>
+    </div>
+
+    <label for="imagePrompt">Image Generation Prompt</label>
+    <textarea id="imagePrompt" placeholder="Describe the image you want to generate...">A cute robot toy standing in a neon-lit room, high quality 3D render</textarea>
+
+    <label for="videoPrompt">Video Generation Prompt</label>
+    <textarea id="videoPrompt" placeholder="Describe how it should move...">Walking and dancing, colorful LED lights flashing, smooth animation, playful movements, 4K quality</textarea>
+
+    <div class="scheduler-section" style="background: #27272a; padding: 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #3f3f46;">
+        <label for="startImage" style="margin-bottom: 4px;">Optional: Starting Image</label>
+        <input type="file" id="startImage" accept="image/*" style="font-size: 12px; margin-bottom: 10px; width: 100%; color: #a1a1aa;">
+        
+        <label for="scheduleTime" style="margin-bottom: 4px;">Schedule Time</label>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="time" id="scheduleTime" style="background: #09090b; color: #fff; border: 1px solid #3f3f46; padding: 6px; border-radius: 4px; font-family: inherit;">
+            <span style="font-size: 11px; color: #71717a;">(Leave empty to run immediately)</span>
+        </div>
+    </div>
+
+    <div class="button-group">
+        <button id="generateBtn" class="btn-primary">
+            <span>⚡</span> Run / Schedule
+        </button>
+        <button id="resetBtn" class="btn-secondary" title="Reset">↻</button>
+    </div>
+
+    <div style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+        <label style="font-size: 11px; margin-bottom: 5px; opacity: 0.7;">Test Specific Features:</label>
+        <div style="display: flex; gap: 5px; width: 100%;">
+            <button id="test-dl" style="flex: 1; padding: 6px; font-size: 11px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Test Download</button>
+            <button id="test-vid" style="flex: 1; padding: 6px; font-size: 11px; background: #333; color: white; border: 1px solid #444; border-radius: 4px; cursor: pointer;">Test Video</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <label>
+            <input type="checkbox" id="autoClickCheckbox" checked> Auto-click Generate
+        </label>
+        <span>v1.3</span>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

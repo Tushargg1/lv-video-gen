@@ -4,7 +4,8 @@ const fs = require('fs');
 const { Client } = require('pg');
 const { getConfig, generateInfluencerPrompts } = require('./influencer_prompts');
 
-const LOCAL_SERVER_URL = 'http://localhost:3001';
+const LOCAL_SERVER_PORT = process.env.INFLUENCER_PORT || 3005;
+const LOCAL_SERVER_URL = `http://localhost:${LOCAL_SERVER_PORT}`;
 
 /**
  * Sleep helper
@@ -74,7 +75,7 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
         const healthRes = await fetch(`${LOCAL_SERVER_URL}/api/job`);
         if (!healthRes.ok) throw new Error(`HTTP ${healthRes.status}`);
     } catch (e) {
-        throw new Error(`Automation bridge server offline! Please make sure 'node server.js' is running on port 3001.`);
+        throw new Error(`Automation bridge server offline! Please make sure 'node server.js' is running on port ${LOCAL_SERVER_PORT}.`);
     }
 
     // 1. Clear any stuck previous jobs or results

@@ -38,7 +38,7 @@ An automated AI generation & multi-platform social media distribution system tha
 │   ├── influencer_prompts.js   # Gemini 50s reel script & prompt generator
 │   ├── influencer_cli.js       # CLI tool for immediate generation & status
 │   ├── influencer_config.json  # Influencer character, niche, post time settings
-│   ├── server.js               # Port 3001 bridge server & multi-clip concat API
+│   ├── server.js               # Port 3005 bridge server & multi-clip concat API
 │   ├── start-influencer-automation.bat # 1-Click Windows batch starter
 │   └── digen-extension/        # Browser extension for high-quality video gen
 │

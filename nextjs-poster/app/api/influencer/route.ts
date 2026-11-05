@@ -35,19 +35,27 @@ export async function POST(request: Request) {
     const { action } = body;
 
     if (action === 'trigger_generation') {
-      // Send command to local server or trigger pipeline
-      const localRes = await fetch('http://localhost:3001/api/influencer/run', {
+      // Send command to local server on port 3005 (or fallback 3001)
+      let localRes = await fetch('http://localhost:3005/api/influencer/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customTopic: body.customTopic })
       }).catch(() => null);
+
+      if (!localRes || !localRes.ok) {
+        localRes = await fetch('http://localhost:3001/api/influencer/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customTopic: body.customTopic })
+        }).catch(() => null);
+      }
 
       if (localRes && localRes.ok) {
         return NextResponse.json({ success: true, message: 'Reel generation triggered on local laptop server' });
       } else {
         return NextResponse.json({
           success: false,
-          error: 'Local automation server is not reachable on http://localhost:3001. Please run "start-influencer-automation.bat" on your laptop.'
+          error: 'Local automation server is not reachable on http://localhost:3005. Please run "start-influencer-automation.bat" on your laptop.'
         }, { status: 503 });
       }
     }

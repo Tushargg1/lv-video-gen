@@ -64,22 +64,28 @@ export default function InfluencerDashboard() {
   };
 
   const checkLocalServer = async () => {
-    try {
-      const res = await fetch('http://localhost:3001/api/influencer/status');
-      if (res.ok) {
-        const data = await res.json();
-        setServerOnline(true);
-        if (data.isRunning) {
-          setIsGenerating(true);
-          setStatusMessage(data.status?.message || 'Generating 50s reel...');
-        } else if (isGenerating) {
-          setIsGenerating(false);
-          fetchReels();
+    // Try primary port 3005 (Influencer), fallback to 3001
+    const ports = [3005, 3001];
+    let foundOnline = false;
+    for (const port of ports) {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/influencer/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerOnline(true);
+          foundOnline = true;
+          if (data.isRunning) {
+            setIsGenerating(true);
+            setStatusMessage(data.status?.message || 'Generating 50s reel...');
+          } else if (isGenerating) {
+            setIsGenerating(false);
+            fetchReels();
+          }
+          break;
         }
-      } else {
-        setServerOnline(false);
-      }
-    } catch (e) {
+      } catch (e) {}
+    }
+    if (!foundOnline) {
       setServerOnline(false);
     }
   };
@@ -96,21 +102,24 @@ export default function InfluencerDashboard() {
   const handleTriggerGeneration = async () => {
     setIsGenerating(true);
     setStatusMessage('Triggering 50s Reel Generation Pipeline...');
-    try {
-      const res = await fetch('http://localhost:3001/api/influencer/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customTopic: customTopic.trim() || null })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setStatusMessage('🚀 Generation started! The extension will generate 5 x 10s clips, merge them into 50s, and auto-schedule.');
-      } else {
-        setStatusMessage(`⚠️ ${data.message || 'Error triggering generation'}`);
-        setIsGenerating(false);
-      }
-    } catch (err: any) {
-      setStatusMessage('❌ Could not connect to local server on port 3001. Please run "start-influencer-automation.bat" on your laptop.');
+    const ports = [3005, 3001];
+    let started = false;
+    for (const port of ports) {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/influencer/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customTopic: customTopic.trim() || null })
+        });
+        if (res.ok) {
+          setStatusMessage('🚀 Generation started! The extension will generate 5 x 10s clips, merge them into 50s, and auto-schedule.');
+          started = true;
+          break;
+        }
+      } catch (err) {}
+    }
+    if (!started) {
+      setStatusMessage('❌ Could not connect to local server on port 3005. Please run "start-influencer-automation.bat" on your laptop.');
       setIsGenerating(false);
     }
   };
@@ -147,7 +156,7 @@ export default function InfluencerDashboard() {
               serverOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
             }`}>
               <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              {serverOnline ? 'Automation Bridge Online' : 'Bridge Offline (Port 3001)'}
+              {serverOnline ? 'Automation Bridge Online' : 'Bridge Offline (Port 3005)'}
             </div>
           </div>
         </div>

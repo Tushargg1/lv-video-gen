@@ -1,0 +1,17 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blue background -->
+  <rect width="128" height="128" rx="24" fill="#2563eb"/>
+
+  <!-- Film/video icon -->
+  <rect x="24" y="32" width="80" height="64" rx="8" fill="white"/>
+  <rect x="32" y="40" width="64" height="48" rx="4" fill="#2563eb"/>
+
+  <!-- Film sprocket holes -->
+  <circle cx="32" cy="48" r="4" fill="white"/>
+  <circle cx="32" cy="72" r="4" fill="white"/>
+  <circle cx="96" cy="48" r="4" fill="white"/>
+  <circle cx="96" cy="72" r="4" fill="white"/>
+
+  <!-- Play button -->
+  <polygon points="54,56 54,72 70,64" fill="white"/>
+</svg>

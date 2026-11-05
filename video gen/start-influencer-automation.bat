@@ -6,8 +6,8 @@ echo ========================================================
 echo   AI Influencer 50s Reel Video Generator & Auto-Poster
 echo ========================================================
 echo.
-echo Starting Local Automation Bridge Server (Port 3001)...
-start "AI Automation Bridge Server" cmd /k "cd /d %~dp0 && node server.js"
+echo Starting Local Automation Bridge Server (Port 3005)...
+start "AI Automation Bridge Server" cmd /k "cd /d %~dp0 && set PORT=3005 && node server.js"
 
 timeout /t 3 >nul
 

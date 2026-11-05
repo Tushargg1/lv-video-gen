@@ -84,7 +84,6 @@ Thumbs.db
 # Misc
 # ===========================
 **/debug/
-video gen/digen-extension/  
 .vercel
 *.txt
 *.xml
