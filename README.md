@@ -1,5 +1,11 @@
 # AI Video & Influencer Automation Pipeline
 
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-success?logo=vercel&style=flat-square)](https://nextjs-poster-eta.vercel.app/influencer)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?logo=github&style=flat-square)](https://github.com/Tushargg1/lv-video-gen)
+
+🌐 **Live Vercel URL:** [https://nextjs-poster-eta.vercel.app](https://nextjs-poster-eta.vercel.app)  
+🎬 **AI Influencer Studio:** [https://nextjs-poster-eta.vercel.app/influencer](https://nextjs-poster-eta.vercel.app/influencer)
+
 An automated AI generation & multi-platform social media distribution system that creates daily 50-second AI Influencer reels (and affiliate showcase videos), stitches clips seamlessly, and autonomously posts to YouTube Shorts, Instagram Reels, and Facebook Reels.
 
 ## 🌟 Key Features
