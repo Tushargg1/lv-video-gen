@@ -56,7 +56,6 @@ export default function InfluencerDashboard() {
   const [customTopic, setCustomTopic] = useState('');
   const [pipelineStatus, setPipelineStatus] = useState<any>(null);
   const [statusMessage, setStatusMessage] = useState('');
-  const [previewPlan, setPreviewPlan] = useState<ReelPlan | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
 
   // Daily post time state
@@ -134,7 +133,14 @@ export default function InfluencerDashboard() {
     }
   };
 
+  useEffect(() => {
+    fetchConfig();
+    const savedTopic = localStorage.getItem('influencer_topic');
+    if (savedTopic) setCustomTopic(savedTopic);
+  }, []);
+
   const handleSaveGroqKey = async () => {
+    if (!groqKey.trim()) return;
     setIsSavingGroqKey(true);
     localStorage.setItem('influencer_groq_key', groqKey.trim());
     try {
@@ -148,13 +154,7 @@ export default function InfluencerDashboard() {
           });
         } catch (e) {}
       }
-      await fetch('/api/influencer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_config', groq_api_key: groqKey.trim() })
-      }).catch(() => {});
-
-      setHasGroqKey(!!groqKey.trim());
+      setHasGroqKey(true);
       setGroqSaveSuccess(true);
       setTimeout(() => setGroqSaveSuccess(false), 3000);
       setIsEditingGroqKey(false);
@@ -165,22 +165,15 @@ export default function InfluencerDashboard() {
     }
   };
 
-  useEffect(() => {
-    // Restore custom topic and post time from localStorage if present
-    const saved = localStorage.getItem('influencer_topic');
-    if (saved) setCustomTopic(saved);
-    const savedTime = localStorage.getItem('influencer_post_time');
-    if (savedTime) setDailyPostTime(savedTime);
-    fetchConfig();
-  }, []);
-
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = async () => {
       const base64 = reader.result as string;
       setReferenceImage(base64);
+
       try {
         const ports = [3005, 3001];
         for (const port of ports) {
@@ -192,13 +185,8 @@ export default function InfluencerDashboard() {
             });
           } catch (err) {}
         }
-        await fetch('/api/influencer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'update_config', reference_image_base64: base64 })
-        }).catch(() => {});
       } catch (err) {
-        console.error('Failed to save reference image:', err);
+        console.error('Failed to sync reference image:', err);
       }
     };
     reader.readAsDataURL(file);
@@ -206,6 +194,7 @@ export default function InfluencerDashboard() {
 
   const handleRemoveImage = async () => {
     setReferenceImage('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     try {
       const ports = [3005, 3001];
       for (const port of ports) {
@@ -305,7 +294,6 @@ export default function InfluencerDashboard() {
   };
 
   const checkLocalServer = async () => {
-    // Try primary port 3005 (Influencer), fallback to 3001
     const ports = [3005, 3001];
     let foundOnline = false;
     for (const port of ports) {
@@ -344,7 +332,6 @@ export default function InfluencerDashboard() {
   useEffect(() => {
     fetchReels();
     checkLocalServer();
-    // Fast 1s polling when generating for live timers & logs, 3s when idle
     const intervalTime = isGenerating ? 1000 : 3000;
     const interval = setInterval(() => {
       checkLocalServer();
@@ -393,54 +380,54 @@ export default function InfluencerDashboard() {
       } catch (err) {}
     }
     if (!started) {
-      setStatusMessage('❌ Could not connect to local server on port 3005. Please run "start-influencer-automation.bat" on your laptop.');
+      setStatusMessage('❌ Could not connect to local server on port 3005 or 3001. Please make sure the bridge server is running.');
       setIsGenerating(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 lg:p-12">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 sm:p-10">
+      <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Navigation / Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-6 border-b border-slate-800 gap-4">
+        {/* Navigation & Header */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <span className="text-3xl">✨</span>
-              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
+              <span className="text-2xl">✨</span>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 AI Influencer Studio
               </h1>
-              <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-pink-500/10 text-pink-400 border border-pink-500/20">
-                1 Reel Daily • 50 Sec
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                1 Reel Daily • 50 Seconds
               </span>
             </div>
-            <p className="text-sm text-slate-400 mt-1">
-              Autonomous 5-clip (10s each) generation, 50s seamless video stitching, and scheduled multi-platform auto-posting.
+            <p className="text-xs text-slate-500 mt-1">
+              Autonomous 5-clip (10s each) generation, seamless 50s video stitching, and scheduled auto-posting.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Link
               href="/"
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition-colors"
+              className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
             >
-              ← Back to Main Dashboard
+              ← Back to Dashboard
             </Link>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border ${
-              serverOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+              serverOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}>
-              <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              {serverOnline ? 'Automation Bridge Online' : 'Bridge Offline (Port 3005)'}
+              <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              {serverOnline ? 'Bridge Server Online' : 'Bridge Offline (Port 3005 / 3001)'}
             </div>
           </div>
         </div>
 
-        {/* Influencer Persona Banner */}
+        {/* Creator Profile & Status Banner */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-slate-900/60 p-6 rounded-3xl border border-slate-800/80 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
             
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-4">
                 {/* Reference Model Photo Avatar */}
                 <div className="relative group flex-shrink-0">
@@ -449,20 +436,20 @@ export default function InfluencerDashboard() {
                       <img
                         src={referenceImage}
                         alt="AI Influencer Model"
-                        className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-pink-500/50 shadow-lg shadow-pink-500/10"
+                        className="w-20 h-20 rounded-xl object-cover border border-slate-300 shadow-sm"
                       />
-                      <div className="absolute inset-0 bg-black/70 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-[10px] text-white font-bold p-1">
+                      <div className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-[10px] text-white font-bold p-1">
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="hover:text-pink-300 transition-colors"
+                          className="hover:underline"
                         >
                           📷 Change
                         </button>
                         <button
                           type="button"
                           onClick={handleRemoveImage}
-                          className="hover:text-rose-400 transition-colors"
+                          className="text-red-300 hover:underline"
                         >
                           ✕ Remove
                         </button>
@@ -473,10 +460,10 @@ export default function InfluencerDashboard() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       title="Upload reference model photo for visual consistency across all 5 clips"
-                      className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl border-2 border-dashed border-pink-500/40 hover:border-pink-500 bg-pink-500/5 hover:bg-pink-500/10 flex flex-col items-center justify-center text-center p-1.5 transition-all cursor-pointer group"
+                      className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 hover:bg-slate-100 flex flex-col items-center justify-center text-center p-2 transition-all cursor-pointer group"
                     >
-                      <span className="text-xl mb-0.5 group-hover:scale-110 transition-transform">📷</span>
-                      <span className="text-[10px] text-pink-400 font-bold leading-tight">
+                      <span className="text-xl mb-0.5">📷</span>
+                      <span className="text-[10px] text-slate-600 font-semibold leading-tight">
                         + Add Model Photo
                       </span>
                     </button>
@@ -492,73 +479,69 @@ export default function InfluencerDashboard() {
 
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-pink-400">Virtual Creator Profile</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Virtual Creator Profile</span>
                     {referenceImage ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                        ✓ Reference Photo Active
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                        ✓ Photo Active
                       </span>
                     ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
                         No Photo Attached
                       </span>
                     )}
                   </div>
-                  <h2 className="text-2xl font-bold text-white mt-0.5">Aria Vance</h2>
-                  <p className="text-xs text-slate-400">Niche: Luxury Streetwear, Aesthetic Lifestyle & City Life</p>
+                  <h2 className="text-xl font-bold text-slate-900 mt-0.5">Aria Vance</h2>
+                  <p className="text-xs text-slate-500">Niche: Luxury Streetwear, Aesthetic Lifestyle & City Life</p>
                 </div>
               </div>
 
-              {/* Top Controls: AI Engine (Groq) & Daily Post Time */}
+              {/* Controls: AI Engine & Daily Post Time */}
               <div className="flex flex-col items-end gap-2">
-                {/* Groq / AI Engine Badge */}
+                {/* Groq / AI Engine Pill */}
                 {!isEditingGroqKey ? (
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={() => setIsEditingGroqKey(true)}
-                      title="Click to configure Groq API Key (Ultra-fast script generator)"
-                      className={`group flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer shadow-sm ${
-                        hasGroqKey
-                          ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
-                          : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
-                      }`}
+                      title="Click to configure Groq API Key"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
                     >
-                      <span className="text-xs">⚡</span>
+                      <span>⚡</span>
                       <span>
-                        AI Engine: <strong className="text-white font-bold ml-0.5">{hasGroqKey ? 'Groq Flagship 120B (Active)' : 'Gemini Flash'}</strong>
+                        AI Engine: <strong className="text-slate-900 font-bold ml-0.5">{hasGroqKey ? 'Groq Flagship 120B (Active)' : 'Gemini Flash'}</strong>
                       </span>
-                      <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 group-hover:bg-slate-700 transition-colors">
-                        {hasGroqKey ? '🔑 Edit' : '+ Connect Groq Key'}
+                      <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 ml-1">
+                        {hasGroqKey ? 'Edit' : '+ Connect Key'}
                       </span>
                     </button>
                     {groqSaveSuccess && (
-                      <span className="text-xs text-emerald-400 font-bold animate-pulse">
-                        ✓ Groq Active!
+                      <span className="text-xs text-emerald-600 font-bold">
+                        ✓ Saved!
                       </span>
                     )}
                   </div>
                 ) : (
-                  <div className="p-3 bg-slate-900 border border-amber-500/50 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-2 animate-in fade-in z-20">
-                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
-                      <span>⚡</span> Groq API Key:
+                  <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-lg flex flex-col sm:flex-row items-center gap-2 z-20">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                      <span>⚡</span> Groq Key:
                     </span>
                     <input
                       type="password"
                       placeholder="gsk_..."
                       value={groqKey}
                       onChange={(e) => setGroqKey(e.target.value)}
-                      className="px-2.5 py-1 bg-slate-950 border border-slate-700 text-xs font-mono text-white rounded-lg focus:outline-none focus:border-amber-400 w-44"
+                      className="px-2.5 py-1 bg-white border border-slate-300 text-xs font-mono text-slate-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 w-44"
                     />
                     <div className="flex items-center gap-1">
                       <button
                         onClick={handleSaveGroqKey}
                         disabled={isSavingGroqKey}
-                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-bold rounded-lg shadow cursor-pointer disabled:opacity-50"
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer disabled:opacity-50"
                       >
-                        {isSavingGroqKey ? 'Saving...' : '✓ Save Groq Key'}
+                        {isSavingGroqKey ? 'Saving...' : 'Save'}
                       </button>
                       <button
                         onClick={() => setIsEditingGroqKey(false)}
-                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 text-[11px] rounded-lg cursor-pointer"
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded-lg cursor-pointer"
                       >
                         ✕
                       </button>
@@ -566,34 +549,34 @@ export default function InfluencerDashboard() {
                   </div>
                 )}
 
-                {/* Interactive Daily Post Time Selector */}
+                {/* Daily Post Time Selector */}
                 {!isEditingTime ? (
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setIsEditingTime(true)}
                       title="Click to select or change daily post time"
-                      className="group flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 text-xs font-semibold rounded-xl border border-purple-500/30 hover:border-purple-400 transition-all cursor-pointer shadow-sm"
+                      className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-200 transition-colors cursor-pointer"
                     >
-                      <span>🕒 Daily Post: <strong className="text-white font-bold ml-1">{formatTime12h(dailyPostTime)}</strong></span>
-                      <span className="text-[10px] bg-purple-500/30 group-hover:bg-purple-500/60 px-1.5 py-0.5 rounded text-purple-200 transition-colors">
-                        ✏️ Change
+                      <span>🕒 Daily Post: <strong className="text-slate-900 font-bold ml-1">{formatTime12h(dailyPostTime)}</strong></span>
+                      <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">
+                        Change
                       </span>
                     </button>
                     {timeSaveSuccess && (
-                      <span className="text-xs text-emerald-400 font-bold animate-pulse">
+                      <span className="text-xs text-emerald-600 font-bold">
                         ✓ Saved!
                       </span>
                     )}
                   </div>
                 ) : (
-                  <div className="p-3 bg-slate-900 border border-purple-500/50 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-2 animate-in fade-in z-10">
+                  <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-lg flex flex-col sm:flex-row items-center gap-2 z-10">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-300">🕒 Set Time:</span>
+                      <span className="text-xs font-medium text-slate-700">🕒 Set Time:</span>
                       <input
                         type="time"
                         value={dailyPostTime}
                         onChange={(e) => setDailyPostTime(e.target.value)}
-                        className="px-2.5 py-1 bg-slate-950 border border-slate-700 text-xs font-bold text-white rounded-lg focus:outline-none focus:border-purple-400"
+                        className="px-2.5 py-1 bg-white border border-slate-300 text-xs font-bold text-slate-900 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div className="flex items-center gap-1">
@@ -602,10 +585,10 @@ export default function InfluencerDashboard() {
                           key={preset}
                           type="button"
                           onClick={() => setDailyPostTime(preset)}
-                          className={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                          className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
                             dailyPostTime === preset
-                              ? 'bg-purple-600 text-white font-bold'
-                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                              ? 'bg-blue-600 text-white font-bold'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
                           {preset}
@@ -616,13 +599,13 @@ export default function InfluencerDashboard() {
                       <button
                         onClick={() => handleSaveTime(dailyPostTime)}
                         disabled={isSavingTime}
-                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg shadow cursor-pointer disabled:opacity-50"
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow-sm cursor-pointer disabled:opacity-50"
                       >
-                        {isSavingTime ? 'Saving...' : '✓ Save'}
+                        {isSavingTime ? 'Saving...' : 'Save'}
                       </button>
                       <button
                         onClick={() => setIsEditingTime(false)}
-                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 text-[11px] rounded-lg cursor-pointer"
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded-lg cursor-pointer"
                       >
                         ✕
                       </button>
@@ -633,15 +616,15 @@ export default function InfluencerDashboard() {
             </div>
 
             {/* Character Reference Prompt Card */}
-            <div className="mt-5 p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                     <span>🎨</span> Character Reference Prompt (Identity)
                   </span>
                   {promptSaveSuccess && (
-                    <span className="text-[10px] text-emerald-400 font-bold animate-pulse">
-                      ✓ Prompt Saved!
+                    <span className="text-[10px] text-emerald-600 font-bold">
+                      ✓ Saved!
                     </span>
                   )}
                 </div>
@@ -649,25 +632,25 @@ export default function InfluencerDashboard() {
                 {!isEditingPrompt ? (
                   <button
                     onClick={() => setIsEditingPrompt(true)}
-                    className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-pink-300 hover:text-pink-200 border border-slate-700/80 transition-colors flex items-center gap-1 cursor-pointer"
+                    className="text-xs px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    <span>✏️</span> Edit Identity Prompt
+                    ✏️ Edit Prompt
                   </button>
                 ) : (
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={handleSavePrompt}
                       disabled={isSavingPrompt}
-                      className="text-[11px] px-3 py-1 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+                      className="text-xs px-3 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm cursor-pointer disabled:opacity-50"
                     >
-                      {isSavingPrompt ? 'Saving...' : '✓ Save Prompt'}
+                      {isSavingPrompt ? 'Saving...' : 'Save Prompt'}
                     </button>
                     <button
                       onClick={() => {
                         setIsEditingPrompt(false);
                         setCharacterPrompt(savedPromptRef.current);
                       }}
-                      className="text-[11px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition-colors cursor-pointer"
+                      className="text-xs px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -677,16 +660,16 @@ export default function InfluencerDashboard() {
 
               {!isEditingPrompt ? (
                 <div>
-                  <p className="text-xs text-slate-300 leading-relaxed italic">
+                  <p className="text-xs text-slate-700 leading-relaxed italic">
                     "{characterPrompt}"
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-2 flex items-center gap-1">
+                  <p className="text-[11px] text-slate-500 mt-2 flex items-center gap-1">
                     <span>✨</span>
                     <span>
                       <strong>Composition:</strong> Each 10s clip combines:
-                      <span className="text-pink-400 font-mono ml-1">[Reference Model Photo]</span> +
-                      <span className="text-purple-300 font-mono ml-1">[Identity Prompt]</span> +
-                      <span className="text-indigo-300 font-mono ml-1">[AI Story Prompt]</span>
+                      <span className="text-blue-700 font-mono ml-1">[Reference Photo]</span> +
+                      <span className="text-slate-700 font-mono ml-1">[Identity Prompt]</span> +
+                      <span className="text-slate-700 font-mono ml-1">[10s Story Script]</span>
                     </span>
                   </p>
                 </div>
@@ -697,7 +680,7 @@ export default function InfluencerDashboard() {
                     value={characterPrompt}
                     onChange={(e) => setCharacterPrompt(e.target.value)}
                     placeholder="Describe character appearance, age, face, hair, eyes, styling, lighting, aesthetic..."
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-pink-500/50 leading-relaxed"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 leading-relaxed"
                   />
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span className="text-[10px] text-slate-500 mr-1">Quick Add:</span>
@@ -717,7 +700,7 @@ export default function InfluencerDashboard() {
                             setCharacterPrompt((prev) => (prev ? `${prev}, ${tag}` : tag));
                           }
                         }}
-                        className="px-2 py-0.5 text-[10px] rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-colors"
+                        className="px-2 py-0.5 text-[10px] rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 transition-colors"
                       >
                         + {tag}
                       </button>
@@ -727,20 +710,20 @@ export default function InfluencerDashboard() {
               )}
             </div>
 
-            {/* Quick Trigger Controls */}
-            <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
+            {/* Topic Input & Trigger Controls */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
               <input
                 type="text"
                 placeholder="Optional topic/theme (e.g. Neon twilight rooftop walk)..."
                 value={customTopic}
                 onChange={(e) => handleTopicChange(e.target.value)}
-                className="w-full sm:flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pink-500/50"
+                className="w-full sm:flex-1 px-4 py-2.5 rounded-lg bg-white border border-slate-300 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               
               {isGenerating ? (
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl font-semibold text-xs bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4 animate-spin text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <div className="flex-1 sm:flex-initial px-4 py-2.5 rounded-lg font-semibold text-xs bg-blue-50 text-blue-700 border border-blue-200 flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <circle cx="12" cy="12" r="10" strokeWidth="4" className="opacity-25" />
                       <path fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" className="opacity-75" />
                     </svg>
@@ -749,7 +732,7 @@ export default function InfluencerDashboard() {
                   <button
                     onClick={handleResetPipeline}
                     title="Stop generation immediately"
-                    className="px-4 py-2.5 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-500 active:scale-95 text-white shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    className="px-4 py-2.5 rounded-lg font-semibold text-xs bg-red-600 hover:bg-red-700 active:scale-95 text-white shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                   >
                     <span>⏹</span>
                     Stop Generation
@@ -759,7 +742,7 @@ export default function InfluencerDashboard() {
                 <button
                   onClick={handleTriggerGeneration}
                   disabled={!serverOnline}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 text-white shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-lg font-semibold text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   <span>⚡</span>
                   Generate Today's 50s Reel
@@ -767,251 +750,39 @@ export default function InfluencerDashboard() {
               )}
             </div>
 
-            {/* Live Real-Time Production Control Room */}
-            {(isGenerating || liveLogs.length > 0) && (
-              <div className="mt-5 p-5 rounded-3xl bg-slate-900/90 border border-purple-500/30 text-xs space-y-4 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-pink-500/5 rounded-full blur-3xl pointer-events-none" />
-
-                {/* Top Control Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`w-3 h-3 rounded-full ${isGenerating ? 'bg-pink-400 animate-ping' : 'bg-slate-500'}`} />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-white text-sm">
-                          {isGenerating ? '🔴 LIVE PIPELINE' : 'PIPELINE ARCHIVE'}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">
-                          {customTopic || pipelineStatus?.customTopic || "Today's Theme"}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Target: 5 sequential 10s clips → 50s continuous stitched vertical reel
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Extension Status Pill */}
-                    <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border flex items-center gap-1.5 ${
-                      extensionStatus?.isActive
-                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                    }`}>
-                      <span className={`w-2 h-2 rounded-full ${extensionStatus?.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                      <span>
-                        Extension: {extensionStatus?.isActive ? `Active (Pinged ${extensionStatus.lastPingSecondsAgo || 0}s ago)` : 'Waiting for Edge/Google Flow'}
-                      </span>
-                    </div>
-
-                    {/* Timer Badge */}
-                    {isGenerating && (
-                      <div className="px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-purple-500/20 text-purple-200 border border-purple-500/30 flex items-center gap-1">
-                        <span>⏱️</span>
-                        <span>{pipelineStatus?.timeFormatted || (pipelineStatus?.elapsedSeconds ? `${pipelineStatus.elapsedSeconds}s` : 'Active')}</span>
-                      </div>
-                    )}
-
-                    {isGenerating && (
-                      <button
-                        onClick={handleResetPipeline}
-                        className="px-3 py-1 rounded-xl text-[11px] font-bold bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 transition-all cursor-pointer"
-                      >
-                        ⏹ Stop
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* 5-Clip Sequential Visual Progress Stepper */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
-                    <span>🎬 5-Clip Reel Architecture (50s Total)</span>
-                    <span className="text-pink-400 font-bold">
-                      {pipelineStatus?.currentClip ? `Processing Clip ${pipelineStatus.currentClip} of 5` : (isGenerating ? 'Script Generation' : 'Ready')}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { index: 1, range: '0-10s', title: 'The Hook', defaultPrompt: 'Arresting visual entrance & scroll-stopping eye contact' },
-                      { index: 2, range: '10-20s', title: 'Progression', defaultPrompt: 'Dynamic camera tracking shot moving through city aesthetic' },
-                      { index: 3, range: '20-30s', title: 'Showcase', defaultPrompt: 'Medium close-up detail highlight of outfit & styling' },
-                      { index: 4, range: '30-40s', title: 'Atmosphere', defaultPrompt: 'Cinematic 360 orbital dolly shot with sunset/neon glows' },
-                      { index: 5, range: '40-50s', title: 'Outro & CTA', defaultPrompt: 'Direct camera smile, iconic hero pose & sign-off' }
-                    ].map((step) => {
-                      const cur = pipelineStatus?.currentClip || 0;
-                      const isCur = isGenerating && cur === step.index;
-                      const isDone = cur > step.index || pipelineStatus?.step === 'concatenating' || pipelineStatus?.step === 'completed';
-
-                      return (
-                        <div
-                          key={step.index}
-                          className={`p-2.5 rounded-2xl border transition-all relative ${
-                            isCur
-                              ? 'bg-purple-950/60 border-pink-500 shadow-lg shadow-pink-500/20 ring-1 ring-pink-500/50'
-                              : isDone
-                              ? 'bg-emerald-950/30 border-emerald-500/40'
-                              : 'bg-slate-950/60 border-slate-800 opacity-70'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                              isCur
-                                ? 'bg-pink-500 text-white'
-                                : isDone
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-slate-800 text-slate-400'
-                            }`}>
-                              Clip {step.index}
-                            </span>
-                            <span className="text-[9px] font-mono text-slate-400">{step.range}</span>
-                          </div>
-
-                          <div className="text-xs font-bold text-white truncate">
-                            {activePlan?.scenes?.[step.index - 1]?.scene_title || step.title}
-                          </div>
-
-                          <div className="mt-1 flex items-center gap-1 text-[10px]">
-                            {isCur ? (
-                              <span className="text-pink-300 font-bold flex items-center gap-1 animate-pulse">
-                                <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-ping" />
-                                Generating ({pipelineStatus?.timeFormatted || '0s'})
-                              </span>
-                            ) : isDone ? (
-                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
-                                ✓ Downloaded
-                              </span>
-                            ) : (
-                              <span className="text-slate-500">⏳ Queued</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Active Prompt Inspector (What is Google Flow rendering right now) */}
-                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/90 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-pink-300 flex items-center gap-1.5 uppercase tracking-wider">
-                      <span>🎯</span> Current Clip Generation Prompt (Google Flow)
-                    </span>
-                    <button
-                      onClick={() => setShowPromptDetails(!showPromptDetails)}
-                      className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
-                    >
-                      {showPromptDetails ? 'Hide Prompt' : 'Show Full Prompt'}
-                    </button>
-                  </div>
-
-                  {showPromptDetails && (
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-sans leading-relaxed">
-                      {pipelineStatus?.currentPrompt ||
-                        activePlan?.scenes?.[(pipelineStatus?.currentClip || 1) - 1]?.video_prompt ||
-                        (isGenerating ? 'Generating prompt with Groq 120B Flagship...' : 'Click "Generate Today\'s 50s Reel" to launch.')}
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-slate-400">
-                    <span className="text-slate-500">Prompt Pipeline:</span>
-                    <span className="px-2 py-0.5 rounded bg-pink-500/10 text-pink-300 border border-pink-500/20 font-mono">
-                      [Model Face Reference: {referenceImage ? 'Active' : 'Default'}]
-                    </span>
-                    <span className="text-slate-600">+</span>
-                    <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">
-                      [Identity Prompt]
-                    </span>
-                    <span className="text-slate-600">+</span>
-                    <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
-                      [10s Scene Story Script]
-                    </span>
-                  </div>
-                </div>
-
-                {/* Live Terminal & Event Console */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
-                    <span className="flex items-center gap-1.5">
-                      <span>💻</span> Live Automation Console & Extension Events ({liveLogs.length} events)
-                    </span>
-                    <span className="text-[10px] text-emerald-400 font-mono animate-pulse">● Streaming Live</span>
-                  </div>
-
-                  <div
-                    ref={logsContainerRef}
-                    className="max-h-48 overflow-y-auto font-mono text-[11px] bg-black/95 p-3 rounded-2xl border border-slate-800/90 space-y-1"
-                  >
-                    {liveLogs.length === 0 ? (
-                      <div className="text-slate-600 py-2 text-center">No logs yet. Triggering generation will stream events here.</div>
-                    ) : (
-                      liveLogs.map((log, idx) => (
-                        <div key={log.id || idx} className="flex items-start gap-2 leading-relaxed">
-                          <span className="text-slate-600 select-none flex-shrink-0">[{log.time}]</span>
-                          <span className={`break-words flex-1 ${
-                            log.level === 'error' ? 'text-rose-400 font-bold' :
-                            log.level === 'warn' ? 'text-amber-400' :
-                            log.level === 'success' ? 'text-emerald-400 font-semibold' :
-                            log.level === 'action' ? 'text-cyan-300' :
-                            'text-slate-300'
-                          }`}>
-                            {log.message}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Actionable How-It-Works Box */}
-                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/90 flex items-start gap-2.5">
-                  <span className="text-base flex-shrink-0">💡</span>
-                  <div className="space-y-1">
-                    <p className="font-bold text-amber-300">How the automation generates your video:</p>
-                    <p className="leading-relaxed">
-                      1. The local server sends Clip 1 to Microsoft Edge via the <strong>Digen Extension</strong>.<br />
-                      2. The extension types the prompt into <strong>flow.google.com</strong> and clicks Generate.<br />
-                      3. When the 1080p MP4 finishes downloading to your Windows <code>Downloads</code> folder, the server automatically catches it, proceeds to Clip 2, 3, 4, 5, merges them into 50s with FFmpeg, and schedules the auto-post!
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {!isGenerating && statusMessage && (
-              <div className="mt-4 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+              <div className="p-3 rounded-lg bg-slate-100 border border-slate-200 text-xs text-slate-700">
                 {statusMessage}
               </div>
             )}
           </div>
 
           {/* Today's Status Card */}
-          <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800/80 flex flex-col justify-between">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Today's Reel Status</span>
               <div className="mt-3">
                 {todaysReel ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-sm font-bold text-emerald-400 uppercase tracking-wide">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wide bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                         {todaysReel.status || 'SCHEDULED'}
                       </span>
                     </div>
-                    <p className="text-sm font-semibold text-white line-clamp-2">
+                    <p className="text-sm font-semibold text-slate-900 line-clamp-2">
                       {todaysReel.title}
                     </p>
-                    <div className="text-xs text-slate-400 space-y-1">
-                      <div>⏰ Scheduled for: <span className="text-slate-200">{new Date(todaysReel.scheduled_time).toLocaleTimeString()}</span></div>
-                      <div>⏱️ Total Duration: <span className="text-slate-200">50 Seconds (5 x 10s)</span></div>
+                    <div className="text-xs text-slate-500 space-y-1">
+                      <div>⏰ Scheduled: <span className="text-slate-800 font-medium">{new Date(todaysReel.scheduled_time).toLocaleTimeString()}</span></div>
+                      <div>⏱️ Total Duration: <span className="text-slate-800 font-medium">50 Seconds (5 x 10s)</span></div>
                     </div>
                   </div>
                 ) : (
-                  <div className="py-6 text-center text-slate-500">
+                  <div className="py-8 text-center text-slate-400">
                     <span className="text-3xl block mb-2">⏳</span>
-                    <p className="text-xs">No reel scheduled yet today.</p>
-                    <p className="text-[11px] text-slate-600 mt-1">Autonomous scheduler will generate 1 reel for 19:00, or trigger manually.</p>
+                    <p className="text-xs font-medium text-slate-600">No reel scheduled yet today.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Autonomous scheduler will generate 1 reel for the set time, or trigger manually.</p>
                   </div>
                 )}
               </div>
@@ -1022,7 +793,7 @@ export default function InfluencerDashboard() {
                 href={todaysReel.video_url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-4 block w-full text-center py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-colors"
+                className="mt-4 block w-full text-center py-2 px-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-semibold transition-colors"
               >
                 Watch 50s Video Preview ↗
               </a>
@@ -1030,11 +801,220 @@ export default function InfluencerDashboard() {
           </div>
         </div>
 
+        {/* Live Real-Time Production Control Room */}
+        {(isGenerating || liveLogs.length > 0) && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            
+            {/* Top Control Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <span className={`w-3 h-3 rounded-full ${isGenerating ? 'bg-blue-600 animate-ping' : 'bg-slate-400'}`} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm">
+                      {isGenerating ? '🔴 LIVE PIPELINE IN PROGRESS' : 'PIPELINE ARCHIVE'}
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                      {customTopic || pipelineStatus?.customTopic || "Today's Theme"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Generating 5 sequential 10s clips → Stitching with FFmpeg into 50s vertical reel
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Extension Status Pill */}
+                <div className={`px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
+                  extensionStatus?.isActive
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${extensionStatus?.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                  <span>
+                    Extension: {extensionStatus?.isActive ? `Active (Pinged ${extensionStatus.lastPingSecondsAgo || 0}s ago)` : 'Waiting for Edge/Google Flow'}
+                  </span>
+                </div>
+
+                {/* Timer Badge */}
+                {isGenerating && (
+                  <div className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-100 text-slate-800 border border-slate-200 flex items-center gap-1">
+                    <span>⏱️</span>
+                    <span>{pipelineStatus?.timeFormatted || (pipelineStatus?.elapsedSeconds ? `${pipelineStatus.elapsedSeconds}s` : 'Active')}</span>
+                  </div>
+                )}
+
+                {isGenerating && (
+                  <button
+                    onClick={handleResetPipeline}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors cursor-pointer"
+                  >
+                    ⏹ Stop
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 5-Clip Sequential Visual Progress Stepper */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>🎬 5-Clip Reel Progress</span>
+                <span className="text-blue-600 font-bold">
+                  {pipelineStatus?.currentClip ? `Processing Clip ${pipelineStatus.currentClip} of 5` : (isGenerating ? 'Script Generation' : 'Ready')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                {[
+                  { index: 1, range: '0-10s', title: 'The Hook', defaultPrompt: 'Arresting visual entrance & scroll-stopping eye contact' },
+                  { index: 2, range: '10-20s', title: 'Progression', defaultPrompt: 'Dynamic camera tracking shot moving through city aesthetic' },
+                  { index: 3, range: '20-30s', title: 'Showcase', defaultPrompt: 'Medium close-up detail highlight of outfit & styling' },
+                  { index: 4, range: '30-40s', title: 'Atmosphere', defaultPrompt: 'Cinematic 360 orbital dolly shot with sunset/neon glows' },
+                  { index: 5, range: '40-50s', title: 'Outro & CTA', defaultPrompt: 'Direct camera smile, iconic hero pose & sign-off' }
+                ].map((step) => {
+                  const cur = pipelineStatus?.currentClip || 0;
+                  const isCur = isGenerating && cur === step.index;
+                  const isDone = cur > step.index || pipelineStatus?.step === 'concatenating' || pipelineStatus?.step === 'completed';
+
+                  return (
+                    <div
+                      key={step.index}
+                      className={`p-3 rounded-xl border transition-all ${
+                        isCur
+                          ? 'bg-blue-50/70 border-blue-500 shadow-sm'
+                          : isDone
+                          ? 'bg-emerald-50/60 border-emerald-300'
+                          : 'bg-slate-50 border-slate-200 opacity-70'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                          isCur
+                            ? 'bg-blue-600 text-white'
+                            : isDone
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
+                          Clip {step.index}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500">{step.range}</span>
+                      </div>
+
+                      <div className="text-xs font-bold text-slate-900 truncate">
+                        {activePlan?.scenes?.[step.index - 1]?.scene_title || step.title}
+                      </div>
+
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px]">
+                        {isCur ? (
+                          <span className="text-blue-700 font-bold flex items-center gap-1 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
+                            Generating ({pipelineStatus?.timeFormatted || '0s'})
+                          </span>
+                        ) : isDone ? (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+                            ✓ Downloaded
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">⏳ Queued</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Active Prompt Inspector */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                  <span>🎯</span> Active Prompt Sent to Google Flow (Clip {pipelineStatus?.currentClip || 1}/5)
+                </span>
+                <button
+                  onClick={() => setShowPromptDetails(!showPromptDetails)}
+                  className="text-xs text-blue-600 hover:underline cursor-pointer"
+                >
+                  {showPromptDetails ? 'Hide Prompt' : 'Show Full Prompt'}
+                </button>
+              </div>
+
+              {showPromptDetails && (
+                <div className="p-3 rounded-lg bg-white border border-slate-200 text-xs text-slate-800 font-sans leading-relaxed">
+                  {pipelineStatus?.currentPrompt ||
+                    activePlan?.scenes?.[(pipelineStatus?.currentClip || 1) - 1]?.video_prompt ||
+                    (isGenerating ? 'Generating script with Groq 120B Flagship...' : 'Click "Generate Today\'s 50s Reel" to launch.')}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500">
+                <span>Prompt Structure:</span>
+                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                  [Model Face Photo: {referenceImage ? 'Active' : 'Default'}]
+                </span>
+                <span>+</span>
+                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                  [Identity Prompt]
+                </span>
+                <span>+</span>
+                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                  [10s Story Script]
+                </span>
+              </div>
+            </div>
+
+            {/* Live Terminal & Event Console */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  <span>💻</span> Live Automation Console & Extension Events ({liveLogs.length} events)
+                </span>
+                <span className="text-[11px] text-emerald-600 font-mono">● Live Feed</span>
+              </div>
+
+              <div
+                ref={logsContainerRef}
+                className="max-h-48 overflow-y-auto font-mono text-[11px] bg-slate-900 text-slate-100 p-3.5 rounded-xl border border-slate-800 space-y-1 shadow-inner"
+              >
+                {liveLogs.length === 0 ? (
+                  <div className="text-slate-500 py-2 text-center font-sans">No events logged yet. Triggering generation will stream events here.</div>
+                ) : (
+                  liveLogs.map((log, idx) => (
+                    <div key={log.id || idx} className="flex items-start gap-2 leading-relaxed">
+                      <span className="text-slate-500 select-none flex-shrink-0">[{log.time}]</span>
+                      <span className={`break-words flex-1 ${
+                        log.level === 'error' ? 'text-red-400 font-bold' :
+                        log.level === 'warn' ? 'text-amber-400' :
+                        log.level === 'success' ? 'text-emerald-400 font-semibold' :
+                        log.level === 'action' ? 'text-cyan-300' :
+                        'text-slate-300'
+                      }`}>
+                        {log.message}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Simple Helper Box */}
+            <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-start gap-2.5">
+              <span className="text-base flex-shrink-0">💡</span>
+              <div className="space-y-0.5">
+                <p className="font-bold text-blue-950">How the automation works:</p>
+                <p className="text-blue-800 leading-relaxed text-[11px]">
+                  The local bridge server sends each clip prompt to Microsoft Edge via the Digen extension. The extension generates the 1080p clip on <code>flow.google.com</code> and downloads it. When finished, FFmpeg concatenates all 5 clips into one 50s reel and schedules your daily post!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 5-Clip Sequential Architecture Explanation */}
-        <div className="bg-slate-900/40 p-6 rounded-3xl border border-slate-800/60">
-          <div className="flex items-center gap-2 mb-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center gap-2">
             <span className="text-lg">🎞️</span>
-            <h3 className="text-base font-bold text-slate-200">
+            <h3 className="text-sm font-bold text-slate-900">
               5-Clip Sequential Reel Architecture (50 Seconds Total)
             </h3>
           </div>
@@ -1046,36 +1026,36 @@ export default function InfluencerDashboard() {
               { num: 4, time: '30-40s', title: 'Atmosphere', desc: 'Cinematic 360 orbital dolly shot with sunset/neon glows' },
               { num: 5, time: '40-50s', title: 'Outro & CTA', desc: 'Direct camera smile, iconic hero pose & sign-off' },
             ].map((step) => (
-              <div key={step.num} className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/60">
+              <div key={step.num} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="w-6 h-6 rounded-lg bg-pink-500/20 text-pink-400 text-xs font-extrabold flex items-center justify-center border border-pink-500/30">
+                  <span className="w-5 h-5 rounded bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center border border-blue-200">
                     {step.num}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-400">{step.time}</span>
+                  <span className="text-[10px] font-mono font-semibold text-slate-500">{step.time}</span>
                 </div>
-                <h4 className="text-xs font-bold text-slate-200">{step.title}</h4>
-                <p className="text-[11px] text-slate-400 mt-1 leading-snug">{step.desc}</p>
+                <h4 className="text-xs font-bold text-slate-900">{step.title}</h4>
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">{step.desc}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Past Reels History */}
-        <div className="bg-slate-900/60 p-6 rounded-3xl border border-slate-800/80 space-y-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <span>📅</span> Past 50-Second Influencer Reels
             </h3>
             <button
               onClick={fetchReels}
-              className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
             >
               ↻ Refresh
             </button>
           </div>
 
           {reels.length === 0 ? (
-            <p className="text-xs text-slate-500 py-6 text-center">
+            <p className="text-xs text-slate-400 py-6 text-center">
               No reels generated yet. Once generated, they will appear here with video previews and posting links.
             </p>
           ) : (
@@ -1083,37 +1063,37 @@ export default function InfluencerDashboard() {
               {reels.map((reel) => (
                 <div
                   key={reel.id}
-                  className="p-5 rounded-2xl bg-slate-950/90 border border-slate-800/70 hover:border-slate-700 transition-all space-y-3 flex flex-col justify-between"
+                  className="p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all space-y-3 flex flex-col justify-between"
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-400">{reel.target_date}</span>
+                      <span className="text-[11px] font-semibold text-slate-500">{reel.target_date}</span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                        reel.status === 'posted' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-purple-500/20 text-purple-300'
+                        reel.status === 'posted' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
                       }`}>
                         {reel.status}
                       </span>
                     </div>
-                    <h4 className="text-sm font-bold text-slate-100 line-clamp-1">{reel.title}</h4>
-                    <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">{reel.caption}</p>
+                    <h4 className="text-xs font-bold text-slate-900 line-clamp-1">{reel.title}</h4>
+                    <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">{reel.caption}</p>
                   </div>
 
                   {reel.video_url && (
-                    <div className="pt-2 border-t border-slate-900 space-y-2">
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
                       <video
                         src={reel.video_url}
                         controls
                         playsInline
                         preload="metadata"
-                        className="w-full h-48 object-cover rounded-xl bg-black"
+                        className="w-full h-44 object-cover rounded-lg bg-black"
                       />
-                      <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <div className="flex items-center justify-between text-[11px] text-slate-500">
                         <span>Duration: 50s</span>
                         <a
                           href={reel.video_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-pink-400 hover:underline"
+                          className="text-blue-600 hover:underline"
                         >
                           Open Raw MP4 ↗
                         </a>
