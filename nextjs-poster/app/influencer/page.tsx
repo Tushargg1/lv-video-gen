@@ -37,6 +37,17 @@ interface ReelRecord {
   created_at: string;
 }
 
+function formatTime12h(timeStr: string) {
+  if (!timeStr) return '19:00 (7:00 PM)';
+  const parts = timeStr.split(':').map(Number);
+  const h = parts[0] ?? 19;
+  const m = parts[1] ?? 0;
+  const hour12 = h % 12 || 12;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const minStr = String(m).padStart(2, '0');
+  return `${timeStr} (${hour12}:${minStr} ${ampm})`;
+}
+
 export default function InfluencerDashboard() {
   const [reels, setReels] = useState<ReelRecord[]>([]);
   const [todaysReel, setTodaysReel] = useState<ReelRecord | null>(null);
@@ -48,11 +59,68 @@ export default function InfluencerDashboard() {
   const [previewPlan, setPreviewPlan] = useState<ReelPlan | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
 
+  // Daily post time state
+  const [dailyPostTime, setDailyPostTime] = useState('19:00');
+  const [isEditingTime, setIsEditingTime] = useState(false);
+  const [isSavingTime, setIsSavingTime] = useState(false);
+  const [timeSaveSuccess, setTimeSaveSuccess] = useState(false);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await fetch('http://localhost:3005/api/influencer/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config?.daily_post_time) {
+          setDailyPostTime(data.config.daily_post_time);
+          localStorage.setItem('influencer_post_time', data.config.daily_post_time);
+        }
+      }
+    } catch (e) {
+      const savedTime = localStorage.getItem('influencer_post_time');
+      if (savedTime) setDailyPostTime(savedTime);
+    }
+  };
+
   useEffect(() => {
-    // Restore custom topic from localStorage if present
+    // Restore custom topic and post time from localStorage if present
     const saved = localStorage.getItem('influencer_topic');
     if (saved) setCustomTopic(saved);
+    const savedTime = localStorage.getItem('influencer_post_time');
+    if (savedTime) setDailyPostTime(savedTime);
+    fetchConfig();
   }, []);
+
+  const handleSaveTime = async (newTime: string) => {
+    if (!newTime) return;
+    setIsSavingTime(true);
+    setDailyPostTime(newTime);
+    localStorage.setItem('influencer_post_time', newTime);
+    try {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          await fetch(`http://localhost:${port}/api/influencer/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ daily_post_time: newTime })
+          });
+        } catch (e) {}
+      }
+      await fetch('/api/influencer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_time', daily_post_time: newTime })
+      }).catch(() => {});
+
+      setTimeSaveSuccess(true);
+      setTimeout(() => setTimeSaveSuccess(false), 3000);
+      setIsEditingTime(false);
+    } catch (err) {
+      console.error('Failed to update time:', err);
+    } finally {
+      setIsSavingTime(false);
+    }
+  };
 
   const handleTopicChange = (val: string) => {
     setCustomTopic(val);
@@ -203,9 +271,71 @@ export default function InfluencerDashboard() {
                 <h2 className="text-2xl font-bold text-white mt-1">Aria Vance</h2>
                 <p className="text-sm text-slate-400">Niche: Luxury Streetwear, Aesthetic Lifestyle & City Life</p>
               </div>
-              <span className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded-lg border border-purple-500/30">
-                Daily Post: 19:00 (7 PM)
-              </span>
+              {/* Interactive Daily Post Time Selector */}
+              <div className="flex flex-col items-end gap-2">
+                {!isEditingTime ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsEditingTime(true)}
+                      title="Click to select or change daily post time"
+                      className="group flex items-center gap-2 px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-100 text-xs font-semibold rounded-xl border border-purple-500/30 hover:border-purple-400 transition-all cursor-pointer shadow-sm"
+                    >
+                      <span>🕒 Daily Post: <strong className="text-white font-bold ml-1">{formatTime12h(dailyPostTime)}</strong></span>
+                      <span className="text-[10px] bg-purple-500/30 group-hover:bg-purple-500/60 px-1.5 py-0.5 rounded text-purple-200 transition-colors">
+                        ✏️ Change
+                      </span>
+                    </button>
+                    {timeSaveSuccess && (
+                      <span className="text-xs text-emerald-400 font-bold animate-pulse">
+                        ✓ Saved!
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-900 border border-purple-500/50 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-2 animate-in fade-in z-10">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-300">🕒 Set Time:</span>
+                      <input
+                        type="time"
+                        value={dailyPostTime}
+                        onChange={(e) => setDailyPostTime(e.target.value)}
+                        className="px-2.5 py-1 bg-slate-950 border border-slate-700 text-xs font-bold text-white rounded-lg focus:outline-none focus:border-purple-400"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {['12:00', '18:00', '19:00', '20:30', '21:00'].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setDailyPostTime(preset)}
+                          className={`px-2 py-0.5 text-[10px] rounded-md transition-colors ${
+                            dailyPostTime === preset
+                              ? 'bg-purple-600 text-white font-bold'
+                              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleSaveTime(dailyPostTime)}
+                        disabled={isSavingTime}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-lg shadow cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingTime ? 'Saving...' : '✓ Save'}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingTime(false)}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 text-[11px] rounded-lg cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mt-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800/60">

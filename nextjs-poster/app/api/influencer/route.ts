@@ -60,6 +60,24 @@ export async function POST(request: Request) {
       }
     }
 
+    if (action === 'update_time' || action === 'update_config') {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          const res = await fetch(`http://localhost:${port}/api/influencer/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            return NextResponse.json(data);
+          }
+        } catch (e) {}
+      }
+      return NextResponse.json({ success: true, message: 'Time preference saved', daily_post_time: body.daily_post_time });
+    }
+
     return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

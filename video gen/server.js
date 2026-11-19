@@ -536,6 +536,41 @@ app.post('/generate', async (req, res) => {
 let isInfluencerPipelineRunning = false;
 let influencerPipelineStatus = { status: 'idle', message: 'Ready' };
 
+app.get('/api/influencer/config', (req, res) => {
+    try {
+        const configPath = path.join(__dirname, 'influencer_config.json');
+        if (fs.existsSync(configPath)) {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            return res.json({ success: true, config });
+        }
+        res.status(404).json({ success: false, error: 'Config file not found' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/influencer/config', (req, res) => {
+    try {
+        const configPath = path.join(__dirname, 'influencer_config.json');
+        let config = {};
+        if (fs.existsSync(configPath)) {
+            config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        }
+        const { daily_post_time, platforms, influencer_name, niche, character_prompt } = req.body || {};
+        if (daily_post_time) config.daily_post_time = daily_post_time;
+        if (platforms) config.platforms = platforms;
+        if (influencer_name) config.influencer_name = influencer_name;
+        if (niche) config.niche = niche;
+        if (character_prompt) config.character_prompt = character_prompt;
+
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+        console.log(`[Influencer] Config updated. Daily post time set to: ${config.daily_post_time}`);
+        res.json({ success: true, message: 'Config updated successfully', config });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/api/influencer/status', (req, res) => {
     res.json({ isRunning: isInfluencerPipelineRunning, status: influencerPipelineStatus });
 });
