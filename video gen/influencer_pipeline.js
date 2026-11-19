@@ -56,7 +56,7 @@ function saveLocalReelHistory(reelRecord) {
  * @param {string|null} referenceImageBase64 Optional model/influencer photo base64
  * @returns {Promise<string>} Saved clip file path
  */
-async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referenceImageBase64 = null) {
+async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referenceImageBase64 = null, onStatus = null) {
     console.log(`\n======================================================`);
     console.log(`🎬 [Clip ${sceneIndex}/5] Starting 10-second video generation...`);
     console.log(`📝 Prompt: "${prompt.slice(0, 80)}..."`);
@@ -67,6 +67,7 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
         const stat = fs.statSync(targetClipPath);
         if (stat.size > 50000) {
             console.log(`✅ [Clip ${sceneIndex}/5] Already generated and exists at: ${targetClipPath} (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+            if (onStatus) onStatus({ message: `Clip ${sceneIndex}/5 already exists. Skipping to next clip.` });
             return targetClipPath;
         }
     }
@@ -103,6 +104,7 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
         throw new Error(`Failed to queue job: HTTP ${submitRes.status}`);
     }
     console.log(`> Job queued successfully! Extension will pick it up, submit to Google Flow, and download 1080p high quality video.`);
+    if (onStatus) onStatus({ message: `Clip ${sceneIndex}/5: Queued. Waiting for browser extension to generate on Google Flow...` });
 
     // 3. Poll for result and download
     let downloadedFilePath = null;
@@ -113,6 +115,11 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
 
     for (let loop = 0; loop < maxWaitLoops; loop++) {
         await sleep(5000);
+
+        if (loop > 0 && loop % 6 === 0 && onStatus) {
+            const mins = Math.floor(loop * 5 / 60);
+            onStatus({ message: `Clip ${sceneIndex}/5: Generating on Google Flow... (${mins}m elapsed)` });
+        }
 
         // Check if extension completed
         try {
@@ -310,25 +317,61 @@ async function runDailyInfluencerPipeline(options = {}) {
         const clipNum = scene.scene_index || (i + 1);
         const targetClipPath = path.join(reelStorageDir, `clip_${clipNum}.mp4`);
 
+        if (options.onStatusUpdate) {
+            options.onStatusUpdate({
+                currentClip: clipNum,
+                totalClips: scenes.length,
+                clipTitle: scene.scene_title,
+                message: `🎬 Clip ${clipNum}/${scenes.length} (${scene.scene_title}) - Queued for Google Flow...`
+            });
+        }
+
         const savedPath = await generateSingle10sClip(
             scene.video_prompt,
             clipNum,
             targetClipPath,
-            options.referenceImageBase64 || null
+            options.referenceImageBase64 || null,
+            options.onStatusUpdate
         );
         clipPaths.push(savedPath);
+
+        if (options.onStatusUpdate) {
+            options.onStatusUpdate({
+                currentClip: clipNum,
+                totalClips: scenes.length,
+                message: `✅ Clip ${clipNum}/${scenes.length} downloaded successfully! Proceeding...`
+            });
+        }
     }
 
     console.log(`\n🎉 All ${clipPaths.length} clips (10s each) successfully generated!`);
 
     // Step 3: Concatenate all 5 clips into 1 cohesive 50-second reel
+    if (options.onStatusUpdate) {
+        options.onStatusUpdate({
+            step: 'concatenating',
+            message: '🎬 All 5 clips ready! Merging with FFmpeg into 50-second reel (1080x1920)...'
+        });
+    }
     const mergedOutputPath = path.join(reelStorageDir, `final_reel_50s_${todayStr}.mp4`);
     const mergeResult = await concat5Clips(clipPaths, mergedOutputPath);
 
     // Step 4: Upload 50-second reel to Vercel Cloud Blob
+    if (options.onStatusUpdate) {
+        options.onStatusUpdate({
+            step: 'uploading',
+            message: '☁️ Uploading merged 50s reel to Vercel Cloud Blob storage...'
+        });
+    }
     const videoUrl = await uploadToBlob(mergeResult.filepath);
 
     // Step 5: Schedule auto-post at the set daily time
+    if (options.onStatusUpdate) {
+        options.onStatusUpdate({
+            step: 'scheduling',
+            message: '📅 Scheduling auto-post to Instagram, YouTube Shorts & Facebook...'
+        });
+    }
     const targetPostTime = config.daily_post_time || '19:00';
     const scheduleTimeIso = calculateScheduleTime(targetPostTime);
     const scheduleResult = await scheduleReelPost(videoUrl, plan, scheduleTimeIso, config.cloud_api_url);

@@ -14,7 +14,9 @@
   ],
   "host_permissions": [
     "https://digen.ai/*",
-    "https://flow.google.com/*"
+    "https://flow.google.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_popup": "popup.html",

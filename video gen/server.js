@@ -540,27 +540,52 @@ app.get('/api/influencer/status', (req, res) => {
     res.json({ isRunning: isInfluencerPipelineRunning, status: influencerPipelineStatus });
 });
 
+app.post('/api/influencer/reset', (req, res) => {
+    isInfluencerPipelineRunning = false;
+    currentJob = null;
+    influencerPipelineStatus = { status: 'idle', message: 'Ready' };
+    console.log('[Influencer] Status manually reset to idle.');
+    res.json({ success: true, message: 'Influencer pipeline reset to idle' });
+});
+
 app.post('/api/influencer/run', (req, res) => {
     if (isInfluencerPipelineRunning) {
         return res.status(409).json({ success: false, message: 'Influencer pipeline is already running!' });
     }
     const { customTopic } = req.body || {};
     isInfluencerPipelineRunning = true;
-    influencerPipelineStatus = { status: 'running', message: 'Generating 50s reel...' };
+    influencerPipelineStatus = { 
+        status: 'running', 
+        message: 'Initializing 50s reel script and prompts...',
+        customTopic: customTopic || 'Autonomous Daily Theme',
+        currentClip: 0,
+        totalClips: 5,
+        updatedAt: new Date().toLocaleTimeString()
+    };
 
     res.json({ success: true, message: '50-second reel generation pipeline started!' });
 
     // Run asynchronously
     const { runDailyInfluencerPipeline } = require('./influencer_pipeline');
-    runDailyInfluencerPipeline({ customTopic })
+    runDailyInfluencerPipeline({ 
+        customTopic,
+        onStatusUpdate: (update) => {
+            influencerPipelineStatus = {
+                status: 'running',
+                ...influencerPipelineStatus,
+                ...update,
+                updatedAt: new Date().toLocaleTimeString()
+            };
+        }
+    })
         .then(result => {
             isInfluencerPipelineRunning = false;
-            influencerPipelineStatus = { status: 'completed', message: 'Reel ready and scheduled', result };
+            influencerPipelineStatus = { status: 'completed', message: '50s Reel ready and scheduled!', result, updatedAt: new Date().toLocaleTimeString() };
             console.log(`\n🎉 Influencer pipeline completed via API trigger!`);
         })
         .catch(err => {
             isInfluencerPipelineRunning = false;
-            influencerPipelineStatus = { status: 'error', message: err.message };
+            influencerPipelineStatus = { status: 'error', message: err.message, updatedAt: new Date().toLocaleTimeString() };
             console.error(`\n❌ Influencer pipeline error via API trigger:`, err);
         });
 });

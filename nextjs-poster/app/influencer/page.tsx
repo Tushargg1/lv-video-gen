@@ -43,9 +43,21 @@ export default function InfluencerDashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [customTopic, setCustomTopic] = useState('');
+  const [pipelineStatus, setPipelineStatus] = useState<any>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [previewPlan, setPreviewPlan] = useState<ReelPlan | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Restore custom topic from localStorage if present
+    const saved = localStorage.getItem('influencer_topic');
+    if (saved) setCustomTopic(saved);
+  }, []);
+
+  const handleTopicChange = (val: string) => {
+    setCustomTopic(val);
+    localStorage.setItem('influencer_topic', val);
+  };
 
   const fetchReels = async () => {
     setIsLoading(true);
@@ -74,9 +86,14 @@ export default function InfluencerDashboard() {
           const data = await res.json();
           setServerOnline(true);
           foundOnline = true;
+          setPipelineStatus(data.status);
           if (data.isRunning) {
             setIsGenerating(true);
             setStatusMessage(data.status?.message || 'Generating 50s reel...');
+            if (data.status?.customTopic && !customTopic) {
+              setCustomTopic(data.status.customTopic);
+              localStorage.setItem('influencer_topic', data.status.customTopic);
+            }
           } else if (isGenerating) {
             setIsGenerating(false);
             fetchReels();
@@ -95,9 +112,18 @@ export default function InfluencerDashboard() {
     checkLocalServer();
     const interval = setInterval(() => {
       checkLocalServer();
-    }, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleResetPipeline = async () => {
+    try {
+      await fetch('http://localhost:3005/api/influencer/reset', { method: 'POST' });
+      setIsGenerating(false);
+      setPipelineStatus(null);
+      setStatusMessage('Pipeline reset to idle.');
+    } catch (e) {}
+  };
 
   const handleTriggerGeneration = async () => {
     setIsGenerating(true);
@@ -192,7 +218,7 @@ export default function InfluencerDashboard() {
                 type="text"
                 placeholder="Optional topic/theme (e.g. Neon twilight rooftop walk)..."
                 value={customTopic}
-                onChange={(e) => setCustomTopic(e.target.value)}
+                onChange={(e) => handleTopicChange(e.target.value)}
                 className="w-full sm:flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pink-500/50"
               />
               <button
@@ -217,8 +243,39 @@ export default function InfluencerDashboard() {
               </button>
             </div>
 
-            {statusMessage && (
-              <div className="mt-4 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
+            {/* Active Pipeline Status Card */}
+            {isGenerating && (
+              <div className="mt-4 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 text-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-pink-400 animate-ping" />
+                    <span className="font-bold text-pink-300">
+                      🎬 Reel Pipeline Active: {customTopic || 'Daily Theme'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleResetPipeline}
+                    className="text-[10px] px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-colors"
+                  >
+                    Reset Pipeline
+                  </button>
+                </div>
+
+                <p className="text-slate-300 font-mono text-[11px] bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
+                  {statusMessage || 'Processing clips with browser extension...'}
+                </p>
+
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300/90 flex items-start gap-2">
+                  <span>💡</span>
+                  <span>
+                    <strong>Next Step:</strong> Ensure Microsoft Edge has the <strong>Digen Extension</strong> enabled and is logged in at <strong>flow.google.com</strong>. The extension automatically detects this queued job, types the prompt, and downloads the 1080p clip.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {!isGenerating && statusMessage && (
+              <div className="mt-4 p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
                 {statusMessage}
               </div>
             )}
