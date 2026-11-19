@@ -547,6 +547,8 @@ app.get('/api/influencer/config', (req, res) => {
                     config.reference_image_base64 = `data:image/${ext};base64,` + fs.readFileSync(config.reference_image_path, 'base64');
                 } catch (e) {}
             }
+            config.has_groq_key = !!(process.env.GROQ_API_KEY || config.groq_api_key);
+            config.groq_api_key = config.groq_api_key || process.env.GROQ_API_KEY || '';
             return res.json({ success: true, config });
         }
         res.status(404).json({ success: false, error: 'Config file not found' });
@@ -569,7 +571,8 @@ app.post('/api/influencer/config', (req, res) => {
             niche, 
             character_prompt, 
             reference_image_base64,
-            remove_reference_image 
+            remove_reference_image,
+            groq_api_key 
         } = req.body || {};
 
         if (daily_post_time) config.daily_post_time = daily_post_time;
@@ -577,6 +580,25 @@ app.post('/api/influencer/config', (req, res) => {
         if (influencer_name) config.influencer_name = influencer_name;
         if (niche) config.niche = niche;
         if (character_prompt !== undefined) config.character_prompt = character_prompt;
+
+        if (groq_api_key !== undefined) {
+            config.groq_api_key = groq_api_key.trim();
+            process.env.GROQ_API_KEY = groq_api_key.trim();
+            try {
+                const envPath = path.join(__dirname, '.env');
+                let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+                if (envContent.includes('GROQ_API_KEY=')) {
+                    envContent = envContent.replace(/GROQ_API_KEY=.*/g, `GROQ_API_KEY="${groq_api_key.trim()}"`);
+                } else {
+                    envContent += `\nGROQ_API_KEY="${groq_api_key.trim()}"\n`;
+                }
+                fs.writeFileSync(envPath, envContent, 'utf8');
+                // Also update root .env
+                const rootEnvPath = path.join(__dirname, '..', '.env');
+                if (fs.existsSync(rootEnvPath)) fs.writeFileSync(rootEnvPath, envContent, 'utf8');
+            } catch (e) {}
+            console.log('[Influencer] Groq API Key updated.');
+        }
 
         if (remove_reference_image) {
             config.reference_image_base64 = '';

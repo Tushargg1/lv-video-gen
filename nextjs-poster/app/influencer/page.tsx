@@ -76,6 +76,13 @@ export default function InfluencerDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const savedPromptRef = useRef(characterPrompt);
 
+  // Groq API Key state
+  const [groqKey, setGroqKey] = useState('');
+  const [hasGroqKey, setHasGroqKey] = useState(false);
+  const [isEditingGroqKey, setIsEditingGroqKey] = useState(false);
+  const [isSavingGroqKey, setIsSavingGroqKey] = useState(false);
+  const [groqSaveSuccess, setGroqSaveSuccess] = useState(false);
+
   const fetchConfig = async () => {
     try {
       const res = await fetch('http://localhost:3005/api/influencer/config');
@@ -94,6 +101,10 @@ export default function InfluencerDashboard() {
           if (data.config.reference_image_base64) {
             setReferenceImage(data.config.reference_image_base64);
           }
+          if (data.config.groq_api_key || data.config.has_groq_key) {
+            setHasGroqKey(true);
+            if (data.config.groq_api_key) setGroqKey(data.config.groq_api_key);
+          }
         }
       }
     } catch (e) {
@@ -104,6 +115,42 @@ export default function InfluencerDashboard() {
         setCharacterPrompt(savedPrompt);
         savedPromptRef.current = savedPrompt;
       }
+      const savedGroq = localStorage.getItem('influencer_groq_key');
+      if (savedGroq) {
+        setGroqKey(savedGroq);
+        setHasGroqKey(true);
+      }
+    }
+  };
+
+  const handleSaveGroqKey = async () => {
+    setIsSavingGroqKey(true);
+    localStorage.setItem('influencer_groq_key', groqKey.trim());
+    try {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          await fetch(`http://localhost:${port}/api/influencer/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ groq_api_key: groqKey.trim() })
+          });
+        } catch (e) {}
+      }
+      await fetch('/api/influencer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_config', groq_api_key: groqKey.trim() })
+      }).catch(() => {});
+
+      setHasGroqKey(!!groqKey.trim());
+      setGroqSaveSuccess(true);
+      setTimeout(() => setGroqSaveSuccess(false), 3000);
+      setIsEditingGroqKey(false);
+    } catch (err) {
+      console.error('Failed to save Groq key:', err);
+    } finally {
+      setIsSavingGroqKey(false);
     }
   };
 
@@ -436,8 +483,65 @@ export default function InfluencerDashboard() {
                 </div>
               </div>
 
-              {/* Interactive Daily Post Time Selector */}
+              {/* Top Controls: AI Engine (Groq) & Daily Post Time */}
               <div className="flex flex-col items-end gap-2">
+                {/* Groq / AI Engine Badge */}
+                {!isEditingGroqKey ? (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setIsEditingGroqKey(true)}
+                      title="Click to configure Groq API Key (Ultra-fast script generator)"
+                      className={`group flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer shadow-sm ${
+                        hasGroqKey
+                          ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                      }`}
+                    >
+                      <span className="text-xs">⚡</span>
+                      <span>
+                        AI Engine: <strong className="text-white font-bold ml-0.5">{hasGroqKey ? 'Groq Llama 3.3 (Active)' : 'Gemini Flash'}</strong>
+                      </span>
+                      <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 group-hover:bg-slate-700 transition-colors">
+                        {hasGroqKey ? '🔑 Edit' : '+ Connect Groq Key'}
+                      </span>
+                    </button>
+                    {groqSaveSuccess && (
+                      <span className="text-xs text-emerald-400 font-bold animate-pulse">
+                        ✓ Groq Active!
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-900 border border-amber-500/50 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-2 animate-in fade-in z-20">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                      <span>⚡</span> Groq API Key:
+                    </span>
+                    <input
+                      type="password"
+                      placeholder="gsk_..."
+                      value={groqKey}
+                      onChange={(e) => setGroqKey(e.target.value)}
+                      className="px-2.5 py-1 bg-slate-950 border border-slate-700 text-xs font-mono text-white rounded-lg focus:outline-none focus:border-amber-400 w-44"
+                    />
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={handleSaveGroqKey}
+                        disabled={isSavingGroqKey}
+                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-bold rounded-lg shadow cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingGroqKey ? 'Saving...' : '✓ Save Groq Key'}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingGroqKey(false)}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 text-[11px] rounded-lg cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Interactive Daily Post Time Selector */}
                 {!isEditingTime ? (
                   <div className="flex items-center gap-2">
                     <button

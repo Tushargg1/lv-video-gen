@@ -22,21 +22,81 @@ function getConfig() {
 }
 
 /**
+ * Generates a structured 5-part scene prompt sequence using Groq API (Llama 3.3 / 3.1)
+ * @param {string} systemPrompt Full instruction prompt
+ * @param {object} config Influencer configuration
+ * @param {string|null} customTopic Theme/topic
+ * @returns {Promise<object|null>} Reel plan or null if failed/missing key
+ */
+async function generateWithGroq(systemPrompt, config, customTopic) {
+    const groqApiKey = process.env.GROQ_API_KEY || config.groq_api_key;
+    if (!groqApiKey) return null;
+
+    const groqModels = [
+        'llama-3.3-70b-versatile',
+        'llama-3.1-70b-versatile',
+        'mixtral-8x7b-32768',
+        'llama3-70b-8192'
+    ];
+
+    for (const model of groqModels) {
+        try {
+            console.log(`[Influencer Prompts] ⚡ Generating 50s reel script via Groq API (${model})...`);
+            const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${groqApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a world-class creative director and AI video prompt engineer for top virtual influencers. You output ONLY valid raw JSON matching the requested schema with no markdown or explanation.'
+                        },
+                        {
+                            role: 'user',
+                            content: systemPrompt
+                        }
+                    ],
+                    response_format: { type: 'json_object' },
+                    temperature: 0.7
+                })
+            });
+
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errText.slice(0, 120)}`);
+            }
+
+            const json = await res.json();
+            const content = json.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Empty response from Groq');
+
+            const data = JSON.parse(content);
+            if (!data.scenes || data.scenes.length !== 5) {
+                throw new Error(`Expected 5 scenes, received ${data.scenes ? data.scenes.length : 0}`);
+            }
+
+            console.log(`✅ [Groq] Reel Plan Created in ${(json.usage?.total_time || 0.8).toFixed(2)}s: "${data.reel_title}" (${data.scenes.length} scenes x 10s = 50s) via ${model}`);
+            data.engine = `Groq (${model})`;
+            return data;
+        } catch (err) {
+            console.warn(`[Influencer Prompts] Groq model ${model} notice: ${err.message}`);
+        }
+    }
+    return null;
+}
+
+/**
  * Generates a structured 5-part scene prompt sequence (5 x 10s = 50s total reel)
+ * Cascade: 1) Groq API -> 2) Gemini API -> 3) Built-in Curated Fallback
  * @param {string} customTopic - Optional custom theme/topic for today's reel
  * @returns {Promise<object>} Generated reel plan
  */
 async function generateInfluencerPrompts(customTopic = null) {
-    if (!process.env.GEMINI_API_KEY) {
-        throw new Error('GEMINI_API_KEY is not set in .env');
-    }
-
     const config = getConfig();
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    
-    // Use current Gemini models (gemini-3.8-flash, 3.7, 3.6, etc.)
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
-    let lastError = null;
 
     const topicDirective = customTopic
         ? `Today's Reel Theme: "${customTopic}"`
@@ -111,32 +171,52 @@ Output JSON with EXACTLY this structure:
 }
 `;
 
-    for (const modelName of modelsToTry) {
+    // 1. Priority 1: Groq API (Ultra-fast Llama 3.3 70B)
+    if (process.env.GROQ_API_KEY || config.groq_api_key) {
+        const groqPlan = await generateWithGroq(systemPrompt, config, customTopic);
+        if (groqPlan) return groqPlan;
+    }
+
+    // 2. Priority 2: Google Gemini API
+    const geminiKey = process.env.GEMINI_API_KEY || config.gemini_api_key;
+    if (geminiKey) {
         try {
-            console.log(`[Influencer Prompts] Generating 50s reel script using ${modelName}...`);
-            const model = genAI.getGenerativeModel({
-                model: modelName,
-                generationConfig: { responseMimeType: "application/json" }
-            });
+            const genAI = new GoogleGenerativeAI(geminiKey);
+            const modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+            
+            for (const modelName of modelsToTry) {
+                try {
+                    console.log(`[Influencer Prompts] Generating 50s reel script using Gemini (${modelName})...`);
+                    const model = genAI.getGenerativeModel({
+                        model: modelName,
+                        generationConfig: { responseMimeType: "application/json" }
+                    });
 
-            const result = await model.generateContent(systemPrompt);
-            const responseText = result.response.text();
-            const data = JSON.parse(responseText);
+                    const result = await model.generateContent(systemPrompt);
+                    const responseText = result.response.text();
+                    const data = JSON.parse(responseText);
 
-            if (!data.scenes || data.scenes.length !== 5) {
-                throw new Error(`Expected 5 scenes, received ${data.scenes ? data.scenes.length : 0}`);
+                    if (!data.scenes || data.scenes.length !== 5) {
+                        throw new Error(`Expected 5 scenes, received ${data.scenes ? data.scenes.length : 0}`);
+                    }
+
+                    console.log(`✅ [Gemini] Reel Plan Created: "${data.reel_title}" (${data.scenes.length} scenes x 10s = 50s)`);
+                    data.engine = `Gemini (${modelName})`;
+                    return data;
+                } catch (err) {
+                    console.warn(`[Influencer Prompts] Gemini model ${modelName} notice: ${err.message?.split('\n')[0] || err.message}`);
+                }
             }
-
-            console.log(`✅ Reel Plan Created: "${data.reel_title}" (${data.scenes.length} scenes x 10s = 50s)`);
-            return data;
-        } catch (err) {
-            console.warn(`[Influencer Prompts] Model ${modelName} notice: ${err.message?.split('\n')[0] || err.message}`);
-            lastError = err;
+        } catch (geminiErr) {
+            console.warn('[Influencer Prompts] Gemini initialization notice:', geminiErr.message);
         }
     }
 
-    console.warn(`\n⚠️ Gemini API rate-limited or unavailable. Activating Built-in High-Converting Reel Storyboard Engine...`);
-    return getFallbackInfluencerPlan(config, customTopic);
+    // 3. Priority 3: Built-in Curated Fallback
+    console.warn(`\n⚠️ API limits reached or unavailable. Activating Built-in High-Converting Reel Storyboard Engine...`);
+    const fallbackPlan = getFallbackInfluencerPlan(config, customTopic);
+    fallbackPlan.engine = 'Curated Storyboard Engine';
+    return fallbackPlan;
 }
 
 /**
