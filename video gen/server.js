@@ -541,6 +541,12 @@ app.get('/api/influencer/config', (req, res) => {
         const configPath = path.join(__dirname, 'influencer_config.json');
         if (fs.existsSync(configPath)) {
             const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            if (!config.reference_image_base64 && config.reference_image_path && fs.existsSync(config.reference_image_path)) {
+                try {
+                    const ext = path.extname(config.reference_image_path).replace('.', '') || 'jpeg';
+                    config.reference_image_base64 = `data:image/${ext};base64,` + fs.readFileSync(config.reference_image_path, 'base64');
+                } catch (e) {}
+            }
             return res.json({ success: true, config });
         }
         res.status(404).json({ success: false, error: 'Config file not found' });
@@ -556,17 +562,44 @@ app.post('/api/influencer/config', (req, res) => {
         if (fs.existsSync(configPath)) {
             config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         }
-        const { daily_post_time, platforms, influencer_name, niche, character_prompt } = req.body || {};
+        const { 
+            daily_post_time, 
+            platforms, 
+            influencer_name, 
+            niche, 
+            character_prompt, 
+            reference_image_base64,
+            remove_reference_image 
+        } = req.body || {};
+
         if (daily_post_time) config.daily_post_time = daily_post_time;
         if (platforms) config.platforms = platforms;
         if (influencer_name) config.influencer_name = influencer_name;
         if (niche) config.niche = niche;
-        if (character_prompt) config.character_prompt = character_prompt;
+        if (character_prompt !== undefined) config.character_prompt = character_prompt;
+
+        if (remove_reference_image) {
+            config.reference_image_base64 = '';
+            config.reference_image_path = '';
+            const imgPath = path.join(__dirname, 'data', 'reference_model.jpg');
+            if (fs.existsSync(imgPath)) try { fs.unlinkSync(imgPath); } catch (e) {}
+            console.log('[Influencer] Reference image removed.');
+        } else if (reference_image_base64) {
+            const dataDir = path.join(__dirname, 'data');
+            if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+            const imgPath = path.join(dataDir, 'reference_model.jpg');
+            const cleanBase64 = reference_image_base64.replace(/^data:image\/\w+;base64,/, '');
+            fs.writeFileSync(imgPath, Buffer.from(cleanBase64, 'base64'));
+            config.reference_image_path = imgPath;
+            config.reference_image_base64 = reference_image_base64;
+            console.log('[Influencer] Reference model photo updated and saved.');
+        }
 
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-        console.log(`[Influencer] Config updated. Daily post time set to: ${config.daily_post_time}`);
+        console.log(`[Influencer] Config updated. Daily post time: ${config.daily_post_time}`);
         res.json({ success: true, message: 'Config updated successfully', config });
     } catch (err) {
+        console.error('[Influencer] Error saving config:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });

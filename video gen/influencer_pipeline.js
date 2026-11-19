@@ -320,6 +320,24 @@ async function runDailyInfluencerPipeline(options = {}) {
         fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
     }
 
+    // Load reference model image if configured
+    let referenceImageBase64 = options.referenceImageBase64 || null;
+    if (!referenceImageBase64) {
+        if (config.reference_image_base64) {
+            // Strip data:image/... prefix if present
+            referenceImageBase64 = config.reference_image_base64.replace(/^data:image\/\w+;base64,/, '');
+        } else if (config.reference_image_path && fs.existsSync(config.reference_image_path)) {
+            try {
+                referenceImageBase64 = fs.readFileSync(config.reference_image_path, 'base64');
+            } catch (e) {
+                console.warn('[Pipeline] Could not read reference image file:', e.message);
+            }
+        }
+    }
+    if (referenceImageBase64) {
+        console.log(`🖼️ Active reference image detected! Will attach model photo to all 5 clips for visual consistency.`);
+    }
+
     // Step 2: Generate all 5 clips sequentially (10s each)
     const clipPaths = [];
     const scenes = plan.scenes || [];
@@ -332,6 +350,12 @@ async function runDailyInfluencerPipeline(options = {}) {
         const clipNum = scene.scene_index || (i + 1);
         const targetClipPath = path.join(reelStorageDir, `clip_${clipNum}.mp4`);
 
+        // Combine: [Scene Story Prompt] + [Reference Character Prompt]
+        let finalClipPrompt = scene.video_prompt;
+        if (config.character_prompt && !finalClipPrompt.toLowerCase().includes(config.character_prompt.slice(0, 30).toLowerCase())) {
+            finalClipPrompt = `${finalClipPrompt} Featuring ${config.influencer_name || 'AI Creator'}: ${config.character_prompt}.`;
+        }
+
         if (options.onStatusUpdate) {
             options.onStatusUpdate({
                 currentClip: clipNum,
@@ -342,10 +366,10 @@ async function runDailyInfluencerPipeline(options = {}) {
         }
 
         const savedPath = await generateSingle10sClip(
-            scene.video_prompt,
+            finalClipPrompt,
             clipNum,
             targetClipPath,
-            options.referenceImageBase64 || null,
+            referenceImageBase64,
             options.onStatusUpdate
         );
         clipPaths.push(savedPath);

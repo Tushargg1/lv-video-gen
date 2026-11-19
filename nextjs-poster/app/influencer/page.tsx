@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 interface Scene {
@@ -65,19 +65,45 @@ export default function InfluencerDashboard() {
   const [isSavingTime, setIsSavingTime] = useState(false);
   const [timeSaveSuccess, setTimeSaveSuccess] = useState(false);
 
+  // Character Reference Model & Prompt state
+  const [characterPrompt, setCharacterPrompt] = useState(
+    'A stunning 23-year-old AI fashion & lifestyle influencer, radiant natural skin, captivating hazel-green eyes, sleek brunette hair with subtle caramel highlights, wearing chic contemporary streetwear, minimalist jewelry, elegant confident aura, 8k photorealistic, 35mm film aesthetic'
+  );
+  const [referenceImage, setReferenceImage] = useState<string>('');
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+  const [promptSaveSuccess, setPromptSaveSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedPromptRef = useRef(characterPrompt);
+
   const fetchConfig = async () => {
     try {
       const res = await fetch('http://localhost:3005/api/influencer/config');
       if (res.ok) {
         const data = await res.json();
-        if (data.config?.daily_post_time) {
-          setDailyPostTime(data.config.daily_post_time);
-          localStorage.setItem('influencer_post_time', data.config.daily_post_time);
+        if (data.config) {
+          if (data.config.daily_post_time) {
+            setDailyPostTime(data.config.daily_post_time);
+            localStorage.setItem('influencer_post_time', data.config.daily_post_time);
+          }
+          if (data.config.character_prompt) {
+            setCharacterPrompt(data.config.character_prompt);
+            savedPromptRef.current = data.config.character_prompt;
+            localStorage.setItem('influencer_character_prompt', data.config.character_prompt);
+          }
+          if (data.config.reference_image_base64) {
+            setReferenceImage(data.config.reference_image_base64);
+          }
         }
       }
     } catch (e) {
       const savedTime = localStorage.getItem('influencer_post_time');
       if (savedTime) setDailyPostTime(savedTime);
+      const savedPrompt = localStorage.getItem('influencer_character_prompt');
+      if (savedPrompt) {
+        setCharacterPrompt(savedPrompt);
+        savedPromptRef.current = savedPrompt;
+      }
     }
   };
 
@@ -89,6 +115,83 @@ export default function InfluencerDashboard() {
     if (savedTime) setDailyPostTime(savedTime);
     fetchConfig();
   }, []);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      setReferenceImage(base64);
+      try {
+        const ports = [3005, 3001];
+        for (const port of ports) {
+          try {
+            await fetch(`http://localhost:${port}/api/influencer/config`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reference_image_base64: base64 })
+            });
+          } catch (err) {}
+        }
+        await fetch('/api/influencer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update_config', reference_image_base64: base64 })
+        }).catch(() => {});
+      } catch (err) {
+        console.error('Failed to save reference image:', err);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = async () => {
+    setReferenceImage('');
+    try {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          await fetch(`http://localhost:${port}/api/influencer/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remove_reference_image: true })
+          });
+        } catch (err) {}
+      }
+    } catch (err) {}
+  };
+
+  const handleSavePrompt = async () => {
+    if (!characterPrompt.trim()) return;
+    setIsSavingPrompt(true);
+    savedPromptRef.current = characterPrompt;
+    localStorage.setItem('influencer_character_prompt', characterPrompt);
+    try {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          await fetch(`http://localhost:${port}/api/influencer/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_prompt: characterPrompt.trim() })
+          });
+        } catch (err) {}
+      }
+      await fetch('/api/influencer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_config', character_prompt: characterPrompt.trim() })
+      }).catch(() => {});
+      setPromptSaveSuccess(true);
+      setTimeout(() => setPromptSaveSuccess(false), 3000);
+      setIsEditingPrompt(false);
+    } catch (err) {
+      console.error('Failed to save character prompt:', err);
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  };
 
   const handleSaveTime = async (newTime: string) => {
     if (!newTime) return;
@@ -265,12 +368,74 @@ export default function InfluencerDashboard() {
           <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-slate-900/60 p-6 rounded-3xl border border-slate-800/80 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
             
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-pink-400">Virtual Creator Profile</span>
-                <h2 className="text-2xl font-bold text-white mt-1">Aria Vance</h2>
-                <p className="text-sm text-slate-400">Niche: Luxury Streetwear, Aesthetic Lifestyle & City Life</p>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                {/* Reference Model Photo Avatar */}
+                <div className="relative group flex-shrink-0">
+                  {referenceImage ? (
+                    <div className="relative">
+                      <img
+                        src={referenceImage}
+                        alt="AI Influencer Model"
+                        className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-pink-500/50 shadow-lg shadow-pink-500/10"
+                      />
+                      <div className="absolute inset-0 bg-black/70 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-[10px] text-white font-bold p-1">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="hover:text-pink-300 transition-colors"
+                        >
+                          📷 Change
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          className="hover:text-rose-400 transition-colors"
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Upload reference model photo for visual consistency across all 5 clips"
+                      className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl border-2 border-dashed border-pink-500/40 hover:border-pink-500 bg-pink-500/5 hover:bg-pink-500/10 flex flex-col items-center justify-center text-center p-1.5 transition-all cursor-pointer group"
+                    >
+                      <span className="text-xl mb-0.5 group-hover:scale-110 transition-transform">📷</span>
+                      <span className="text-[10px] text-pink-400 font-bold leading-tight">
+                        + Add Model Photo
+                      </span>
+                    </button>
+                  )}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-pink-400">Virtual Creator Profile</span>
+                    {referenceImage ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        ✓ Reference Photo Active
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                        No Photo Attached
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mt-0.5">Aria Vance</h2>
+                  <p className="text-xs text-slate-400">Niche: Luxury Streetwear, Aesthetic Lifestyle & City Life</p>
+                </div>
               </div>
+
               {/* Interactive Daily Post Time Selector */}
               <div className="flex flex-col items-end gap-2">
                 {!isEditingTime ? (
@@ -338,13 +503,99 @@ export default function InfluencerDashboard() {
               </div>
             </div>
 
-            <div className="mt-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800/60">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Visual Identity Prompt
-              </span>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                "A stunning 23-year-old AI fashion & lifestyle influencer, radiant natural skin, captivating hazel-green eyes, sleek brunette hair with caramel highlights, chic contemporary streetwear, minimalist jewelry, elegant confident aura, 8k photorealistic, 35mm film aesthetic."
-              </p>
+            {/* Character Reference Prompt Card */}
+            <div className="mt-5 p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>🎨</span> Character Reference Prompt (Identity)
+                  </span>
+                  {promptSaveSuccess && (
+                    <span className="text-[10px] text-emerald-400 font-bold animate-pulse">
+                      ✓ Prompt Saved!
+                    </span>
+                  )}
+                </div>
+
+                {!isEditingPrompt ? (
+                  <button
+                    onClick={() => setIsEditingPrompt(true)}
+                    className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-pink-300 hover:text-pink-200 border border-slate-700/80 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>✏️</span> Edit Identity Prompt
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleSavePrompt}
+                      disabled={isSavingPrompt}
+                      className="text-[11px] px-3 py-1 rounded-lg bg-pink-600 hover:bg-pink-500 text-white font-bold transition-all shadow cursor-pointer disabled:opacity-50"
+                    >
+                      {isSavingPrompt ? 'Saving...' : '✓ Save Prompt'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingPrompt(false);
+                        setCharacterPrompt(savedPromptRef.current);
+                      }}
+                      className="text-[11px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!isEditingPrompt ? (
+                <div>
+                  <p className="text-xs text-slate-300 leading-relaxed italic">
+                    "{characterPrompt}"
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-2 flex items-center gap-1">
+                    <span>✨</span>
+                    <span>
+                      <strong>Composition:</strong> Each 10s clip combines:
+                      <span className="text-pink-400 font-mono ml-1">[Reference Model Photo]</span> +
+                      <span className="text-purple-300 font-mono ml-1">[Identity Prompt]</span> +
+                      <span className="text-indigo-300 font-mono ml-1">[AI Story Prompt]</span>
+                    </span>
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  <textarea
+                    rows={3}
+                    value={characterPrompt}
+                    onChange={(e) => setCharacterPrompt(e.target.value)}
+                    placeholder="Describe character appearance, age, face, hair, eyes, styling, lighting, aesthetic..."
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-pink-500/50 leading-relaxed"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-500 mr-1">Quick Add:</span>
+                    {[
+                      '8k photorealistic',
+                      'cinematic volumetric lighting',
+                      '35mm film aesthetic',
+                      'hazel-green eyes',
+                      'luxury streetwear',
+                      'dewy radiant skin'
+                    ].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          if (!characterPrompt.includes(tag)) {
+                            setCharacterPrompt((prev) => (prev ? `${prev}, ${tag}` : tag));
+                          }
+                        }}
+                        className="px-2 py-0.5 text-[10px] rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-colors"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Quick Trigger Controls */}
