@@ -32,10 +32,11 @@ async function generateWithGroq(systemPrompt, config, customTopic) {
     const groqApiKey = process.env.GROQ_API_KEY || config.groq_api_key;
     if (!groqApiKey) return null;
 
+    // Prioritize Groq's 120-Billion parameter flagship model for highest creative & cinematic quality
     const groqModels = [
-        'qwen/qwen3.8-27b',
-        'openai/gpt-oss-120b',
-        'openai/gpt-oss-20b'
+        'openai/gpt-oss-120b',  // Best 120B Flagship model on Groq - deep creative direction & cinematic scripting
+        'qwen/qwen3.8-27b',      // 27B high-speed secondary fallback
+        'openai/gpt-oss-20b'       // 20B tertiary fallback
     ];
 
     for (const model of groqModels) {

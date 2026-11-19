@@ -499,7 +499,7 @@ export default function InfluencerDashboard() {
                     >
                       <span className="text-xs">⚡</span>
                       <span>
-                        AI Engine: <strong className="text-white font-bold ml-0.5">{hasGroqKey ? 'Groq Llama 3.3 (Active)' : 'Gemini Flash'}</strong>
+                        AI Engine: <strong className="text-white font-bold ml-0.5">{hasGroqKey ? 'Groq Flagship 120B (Active)' : 'Gemini Flash'}</strong>
                       </span>
                       <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300 group-hover:bg-slate-700 transition-colors">
                         {hasGroqKey ? '🔑 Edit' : '+ Connect Groq Key'}
