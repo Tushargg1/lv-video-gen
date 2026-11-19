@@ -1,5 +1,6 @@
-require('dotenv').config();
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config();
 const fs = require('fs');
 const { Client } = require('pg');
 const { getConfig, generateInfluencerPrompts } = require('./influencer_prompts');
