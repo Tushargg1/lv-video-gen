@@ -25,16 +25,36 @@ try {
 }
 
 let currentJob = null;
+let jobResult = null;
+let lastExtensionPing = 0;
+
+// In-memory real-time log buffer for live dashboard visibility
+const pipelineLogs = [
+    { id: 1, time: new Date().toLocaleTimeString(), message: 'Automation bridge server initialized.', level: 'info' }
+];
+
+function addPipelineLog(message, level = 'info') {
+    const entry = {
+        id: Date.now() + Math.random(),
+        time: new Date().toLocaleTimeString(),
+        message,
+        level
+    };
+    pipelineLogs.push(entry);
+    if (pipelineLogs.length > 200) pipelineLogs.shift();
+}
 
 app.post('/api/job', (req, res) => {
     const { imagePrompt, videoPrompt, imageBase64, target } = req.body;
     if (!imagePrompt && !videoPrompt) return res.status(400).json({ success: false, error: 'Missing prompts' });
     currentJob = { imagePrompt, videoPrompt, imageBase64, timestamp: Date.now() };
     console.log(`\n📥 Received new ${target === 'image' ? 'Image' : 'Video'} Gen Job from Dashboard!`);
+    addPipelineLog(`Queued ${(target === 'image' ? 'Image' : 'Video')} Gen Job for Google Flow: "${(videoPrompt || imagePrompt).slice(0, 75)}..."`, 'action');
     res.json({ success: true, message: 'Job queued for extension!' });
 });
 
 app.get('/api/job', (req, res) => {
+    lastExtensionPing = Date.now();
     // The extension will poll this every few seconds
     if (currentJob) {
         res.json({ hasJob: true, job: currentJob });
@@ -44,12 +64,14 @@ app.get('/api/job', (req, res) => {
 });
 
 app.delete('/api/job', (req, res) => {
+    const hadJob = !!currentJob;
     currentJob = null;
-    console.log(`\n✅ Job picked up and cleared by the extension!`);
+    if (hadJob && req.query.source !== 'cleanup') {
+        console.log(`\n✅ Job picked up and cleared by the extension!`);
+        addPipelineLog('Browser extension picked up job and started processing on Google Flow!', 'success');
+    }
     res.json({ success: true });
 });
-
-let jobResult = null;
 
 app.post('/api/result', (req, res) => {
     jobResult = req.body;
@@ -627,7 +649,34 @@ app.post('/api/influencer/config', (req, res) => {
 });
 
 app.get('/api/influencer/status', (req, res) => {
-    res.json({ isRunning: isInfluencerPipelineRunning, status: influencerPipelineStatus });
+    const now = Date.now();
+    const isExtensionActive = lastExtensionPing > 0 && (now - lastExtensionPing) < 15000;
+    const lastPingSecondsAgo = lastExtensionPing > 0 ? Math.round((now - lastExtensionPing) / 1000) : null;
+
+    let latestPlan = null;
+    try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const planFile = path.join(__dirname, 'data', 'influencer_reels', `reel_${todayStr}`, 'plan.json');
+        if (fs.existsSync(planFile)) {
+            latestPlan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+        }
+    } catch (e) {}
+
+    res.json({
+        isRunning: isInfluencerPipelineRunning,
+        status: influencerPipelineStatus,
+        extension: {
+            isActive: isExtensionActive,
+            lastPingSecondsAgo,
+            lastPingTime: lastExtensionPing ? new Date(lastExtensionPing).toLocaleTimeString() : null
+        },
+        plan: latestPlan,
+        logs: pipelineLogs.slice(-60)
+    });
+});
+
+app.get('/api/influencer/logs', (req, res) => {
+    res.json({ success: true, logs: pipelineLogs });
 });
 
 app.post('/api/influencer/reset', (req, res) => {
@@ -635,6 +684,7 @@ app.post('/api/influencer/reset', (req, res) => {
     currentJob = null;
     jobResult = null;
     influencerPipelineStatus = { status: 'idle', message: 'Pipeline stopped by user.' };
+    addPipelineLog('⏹ Pipeline stopped by user. Resetting to idle state.', 'warn');
     try {
         const { cancelPipeline } = require('./influencer_pipeline');
         cancelPipeline();
@@ -651,12 +701,13 @@ app.post('/api/influencer/run', (req, res) => {
     isInfluencerPipelineRunning = true;
     influencerPipelineStatus = { 
         status: 'running', 
-        message: 'Initializing 50s reel script and prompts...',
+        message: 'Initializing 50s reel script and prompts with Groq 120B Flagship...',
         customTopic: customTopic || 'Autonomous Daily Theme',
         currentClip: 0,
         totalClips: 5,
         updatedAt: new Date().toLocaleTimeString()
     };
+    addPipelineLog(`🚀 Triggered 50-second reel generation: "${customTopic || 'Autonomous Daily Theme'}"`, 'action');
 
     res.json({ success: true, message: '50-second reel generation pipeline started!' });
 
@@ -671,16 +722,21 @@ app.post('/api/influencer/run', (req, res) => {
                 ...update,
                 updatedAt: new Date().toLocaleTimeString()
             };
+            if (update.message) {
+                addPipelineLog(update.message, update.step || 'info');
+            }
         }
     })
         .then(result => {
             isInfluencerPipelineRunning = false;
             influencerPipelineStatus = { status: 'completed', message: '50s Reel ready and scheduled!', result, updatedAt: new Date().toLocaleTimeString() };
+            addPipelineLog(`🎉 50s Reel completely generated, merged and scheduled!`, 'success');
             console.log(`\n🎉 Influencer pipeline completed via API trigger!`);
         })
         .catch(err => {
             isInfluencerPipelineRunning = false;
             influencerPipelineStatus = { status: 'error', message: err.message, updatedAt: new Date().toLocaleTimeString() };
+            addPipelineLog(`❌ Pipeline error: ${err.message}`, 'error');
             console.error(`\n❌ Influencer pipeline error via API trigger:`, err);
         });
 });
@@ -688,7 +744,21 @@ app.post('/api/influencer/run', (req, res) => {
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
     console.log(`\n==============================================`);
-    console.log(`🌟 Local Automation UI is running!`);
-    console.log(`👉 Open http://localhost:${PORT} in your browser`);
-    console.log(`==============================================\n`);
+    console.log(`🌟 Local Automation Bridge running on http://localhost:${PORT}`);
 });
+
+// Dual-Port Bridge: If Port 3001 is free, also handle requests on Port 3001
+// This guarantees instant compatibility with extensions configured on either Port 3005 or Port 3001!
+if (PORT != 3001) {
+    const http = require('http');
+    const proxyServer = http.createServer((req, res) => {
+        app(req, res);
+    });
+    proxyServer.on('error', (err) => {
+        console.log(`[Bridge] Port 3001 note (${err.code}). Running on primary port ${PORT}.`);
+    });
+    proxyServer.listen(3001, () => {
+        console.log(`🌟 Dual-port active: Also listening on http://localhost:3001 for browser extension compatibility!`);
+        console.log(`==============================================\n`);
+    });
+}

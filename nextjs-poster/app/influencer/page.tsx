@@ -83,6 +83,17 @@ export default function InfluencerDashboard() {
   const [isSavingGroqKey, setIsSavingGroqKey] = useState(false);
   const [groqSaveSuccess, setGroqSaveSuccess] = useState(false);
 
+  // Real-time Pipeline Logs & Activity State
+  const [liveLogs, setLiveLogs] = useState<{ id: string | number; time: string; message: string; level: string }[]>([]);
+  const [activePlan, setActivePlan] = useState<ReelPlan | null>(null);
+  const [extensionStatus, setExtensionStatus] = useState<{
+    isActive: boolean;
+    lastPingSecondsAgo: number | null;
+    lastPingTime: string | null;
+  } | null>(null);
+  const [showPromptDetails, setShowPromptDetails] = useState(true);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+
   const fetchConfig = async () => {
     try {
       const res = await fetch('http://localhost:3005/api/influencer/config');
@@ -305,6 +316,11 @@ export default function InfluencerDashboard() {
           setServerOnline(true);
           foundOnline = true;
           setPipelineStatus(data.status);
+          if (data.extension) setExtensionStatus(data.extension);
+          if (data.plan) setActivePlan(data.plan);
+          if (data.logs && Array.isArray(data.logs)) {
+            setLiveLogs(data.logs);
+          }
           if (data.isRunning) {
             setIsGenerating(true);
             setStatusMessage(data.status?.message || 'Generating 50s reel...');
@@ -328,11 +344,20 @@ export default function InfluencerDashboard() {
   useEffect(() => {
     fetchReels();
     checkLocalServer();
+    // Fast 1s polling when generating for live timers & logs, 3s when idle
+    const intervalTime = isGenerating ? 1000 : 3000;
     const interval = setInterval(() => {
       checkLocalServer();
-    }, 3000);
+    }, intervalTime);
     return () => clearInterval(interval);
-  }, []);
+  }, [isGenerating]);
+
+  // Auto-scroll terminal logs to bottom
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [liveLogs]);
 
   const handleResetPipeline = async () => {
     try {
@@ -742,33 +767,214 @@ export default function InfluencerDashboard() {
               )}
             </div>
 
-            {/* Active Pipeline Status Card */}
-            {isGenerating && (
-              <div className="mt-4 p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 text-xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-pink-400 animate-ping" />
-                    <span className="font-bold text-pink-300">
-                      🎬 Reel Pipeline Active: {customTopic || 'Daily Theme'}
-                    </span>
+            {/* Live Real-Time Production Control Room */}
+            {(isGenerating || liveLogs.length > 0) && (
+              <div className="mt-5 p-5 rounded-3xl bg-slate-900/90 border border-purple-500/30 text-xs space-y-4 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-pink-500/5 rounded-full blur-3xl pointer-events-none" />
+
+                {/* Top Control Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className={`w-3 h-3 rounded-full ${isGenerating ? 'bg-pink-400 animate-ping' : 'bg-slate-500'}`} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-white text-sm">
+                          {isGenerating ? '🔴 LIVE PIPELINE' : 'PIPELINE ARCHIVE'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                          {customTopic || pipelineStatus?.customTopic || "Today's Theme"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Target: 5 sequential 10s clips → 50s continuous stitched vertical reel
+                      </p>
+                    </div>
                   </div>
-                  <button
-                    onClick={handleResetPipeline}
-                    className="text-[10px] px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-colors"
-                  >
-                    Reset Pipeline
-                  </button>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Extension Status Pill */}
+                    <div className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border flex items-center gap-1.5 ${
+                      extensionStatus?.isActive
+                        ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                        : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                    }`}>
+                      <span className={`w-2 h-2 rounded-full ${extensionStatus?.isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                      <span>
+                        Extension: {extensionStatus?.isActive ? `Active (Pinged ${extensionStatus.lastPingSecondsAgo || 0}s ago)` : 'Waiting for Edge/Google Flow'}
+                      </span>
+                    </div>
+
+                    {/* Timer Badge */}
+                    {isGenerating && (
+                      <div className="px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-purple-500/20 text-purple-200 border border-purple-500/30 flex items-center gap-1">
+                        <span>⏱️</span>
+                        <span>{pipelineStatus?.timeFormatted || (pipelineStatus?.elapsedSeconds ? `${pipelineStatus.elapsedSeconds}s` : 'Active')}</span>
+                      </div>
+                    )}
+
+                    {isGenerating && (
+                      <button
+                        onClick={handleResetPipeline}
+                        className="px-3 py-1 rounded-xl text-[11px] font-bold bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/40 transition-all cursor-pointer"
+                      >
+                        ⏹ Stop
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <p className="text-slate-300 font-mono text-[11px] bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">
-                  {statusMessage || 'Processing clips with browser extension...'}
-                </p>
+                {/* 5-Clip Sequential Visual Progress Stepper */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
+                    <span>🎬 5-Clip Reel Architecture (50s Total)</span>
+                    <span className="text-pink-400 font-bold">
+                      {pipelineStatus?.currentClip ? `Processing Clip ${pipelineStatus.currentClip} of 5` : (isGenerating ? 'Script Generation' : 'Ready')}
+                    </span>
+                  </div>
 
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300/90 flex items-start gap-2">
-                  <span>💡</span>
-                  <span>
-                    <strong>Next Step:</strong> Ensure Microsoft Edge has the <strong>Digen Extension</strong> enabled and is logged in at <strong>flow.google.com</strong>. The extension automatically detects this queued job, types the prompt, and downloads the 1080p clip.
-                  </span>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { index: 1, range: '0-10s', title: 'The Hook', defaultPrompt: 'Arresting visual entrance & scroll-stopping eye contact' },
+                      { index: 2, range: '10-20s', title: 'Progression', defaultPrompt: 'Dynamic camera tracking shot moving through city aesthetic' },
+                      { index: 3, range: '20-30s', title: 'Showcase', defaultPrompt: 'Medium close-up detail highlight of outfit & styling' },
+                      { index: 4, range: '30-40s', title: 'Atmosphere', defaultPrompt: 'Cinematic 360 orbital dolly shot with sunset/neon glows' },
+                      { index: 5, range: '40-50s', title: 'Outro & CTA', defaultPrompt: 'Direct camera smile, iconic hero pose & sign-off' }
+                    ].map((step) => {
+                      const cur = pipelineStatus?.currentClip || 0;
+                      const isCur = isGenerating && cur === step.index;
+                      const isDone = cur > step.index || pipelineStatus?.step === 'concatenating' || pipelineStatus?.step === 'completed';
+
+                      return (
+                        <div
+                          key={step.index}
+                          className={`p-2.5 rounded-2xl border transition-all relative ${
+                            isCur
+                              ? 'bg-purple-950/60 border-pink-500 shadow-lg shadow-pink-500/20 ring-1 ring-pink-500/50'
+                              : isDone
+                              ? 'bg-emerald-950/30 border-emerald-500/40'
+                              : 'bg-slate-950/60 border-slate-800 opacity-70'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                              isCur
+                                ? 'bg-pink-500 text-white'
+                                : isDone
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              Clip {step.index}
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-400">{step.range}</span>
+                          </div>
+
+                          <div className="text-xs font-bold text-white truncate">
+                            {activePlan?.scenes?.[step.index - 1]?.scene_title || step.title}
+                          </div>
+
+                          <div className="mt-1 flex items-center gap-1 text-[10px]">
+                            {isCur ? (
+                              <span className="text-pink-300 font-bold flex items-center gap-1 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-ping" />
+                                Generating ({pipelineStatus?.timeFormatted || '0s'})
+                              </span>
+                            ) : isDone ? (
+                              <span className="text-emerald-400 font-semibold flex items-center gap-0.5">
+                                ✓ Downloaded
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">⏳ Queued</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Active Prompt Inspector (What is Google Flow rendering right now) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/90 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-pink-300 flex items-center gap-1.5 uppercase tracking-wider">
+                      <span>🎯</span> Current Clip Generation Prompt (Google Flow)
+                    </span>
+                    <button
+                      onClick={() => setShowPromptDetails(!showPromptDetails)}
+                      className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      {showPromptDetails ? 'Hide Prompt' : 'Show Full Prompt'}
+                    </button>
+                  </div>
+
+                  {showPromptDetails && (
+                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 font-sans leading-relaxed">
+                      {pipelineStatus?.currentPrompt ||
+                        activePlan?.scenes?.[(pipelineStatus?.currentClip || 1) - 1]?.video_prompt ||
+                        (isGenerating ? 'Generating prompt with Groq 120B Flagship...' : 'Click "Generate Today\'s 50s Reel" to launch.')}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-slate-400">
+                    <span className="text-slate-500">Prompt Pipeline:</span>
+                    <span className="px-2 py-0.5 rounded bg-pink-500/10 text-pink-300 border border-pink-500/20 font-mono">
+                      [Model Face Reference: {referenceImage ? 'Active' : 'Default'}]
+                    </span>
+                    <span className="text-slate-600">+</span>
+                    <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono">
+                      [Identity Prompt]
+                    </span>
+                    <span className="text-slate-600">+</span>
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
+                      [10s Scene Story Script]
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live Terminal & Event Console */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400">
+                    <span className="flex items-center gap-1.5">
+                      <span>💻</span> Live Automation Console & Extension Events ({liveLogs.length} events)
+                    </span>
+                    <span className="text-[10px] text-emerald-400 font-mono animate-pulse">● Streaming Live</span>
+                  </div>
+
+                  <div
+                    ref={logsContainerRef}
+                    className="max-h-48 overflow-y-auto font-mono text-[11px] bg-black/95 p-3 rounded-2xl border border-slate-800/90 space-y-1"
+                  >
+                    {liveLogs.length === 0 ? (
+                      <div className="text-slate-600 py-2 text-center">No logs yet. Triggering generation will stream events here.</div>
+                    ) : (
+                      liveLogs.map((log, idx) => (
+                        <div key={log.id || idx} className="flex items-start gap-2 leading-relaxed">
+                          <span className="text-slate-600 select-none flex-shrink-0">[{log.time}]</span>
+                          <span className={`break-words flex-1 ${
+                            log.level === 'error' ? 'text-rose-400 font-bold' :
+                            log.level === 'warn' ? 'text-amber-400' :
+                            log.level === 'success' ? 'text-emerald-400 font-semibold' :
+                            log.level === 'action' ? 'text-cyan-300' :
+                            'text-slate-300'
+                          }`}>
+                            {log.message}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Actionable How-It-Works Box */}
+                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200/90 flex items-start gap-2.5">
+                  <span className="text-base flex-shrink-0">💡</span>
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-300">How the automation generates your video:</p>
+                    <p className="leading-relaxed">
+                      1. The local server sends Clip 1 to Microsoft Edge via the <strong>Digen Extension</strong>.<br />
+                      2. The extension types the prompt into <strong>flow.google.com</strong> and clicks Generate.<br />
+                      3. When the 1080p MP4 finishes downloading to your Windows <code>Downloads</code> folder, the server automatically catches it, proceeds to Clip 2, 3, 4, 5, merges them into 50s with FFmpeg, and schedules the auto-post!
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

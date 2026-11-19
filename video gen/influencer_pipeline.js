@@ -111,7 +111,15 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
         throw new Error(`Failed to queue job: HTTP ${submitRes.status}`);
     }
     console.log(`> Job queued successfully! Extension will pick it up, submit to Google Flow, and download 1080p high quality video.`);
-    if (onStatus) onStatus({ message: `Clip ${sceneIndex}/5: Queued. Waiting for browser extension to generate on Google Flow...` });
+    if (onStatus) onStatus({
+        step: 'generating_clip',
+        currentClip: sceneIndex,
+        totalClips: 5,
+        currentPrompt: prompt,
+        elapsedSeconds: 0,
+        timeFormatted: '0s',
+        message: `Clip ${sceneIndex}/5: Queued. Waiting for browser extension to generate on Google Flow...`
+    });
 
     // 3. Poll for result and download
     let downloadedFilePath = null;
@@ -127,9 +135,21 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
         }
         await sleep(5000);
 
-        if (loop > 0 && loop % 6 === 0 && onStatus) {
-            const mins = Math.floor(loop * 5 / 60);
-            onStatus({ message: `Clip ${sceneIndex}/5: Generating on Google Flow... (${mins}m elapsed)` });
+        const elapsedSeconds = (loop + 1) * 5;
+        const mins = Math.floor(elapsedSeconds / 60);
+        const secs = elapsedSeconds % 60;
+        const timeFormatted = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+        if (onStatus) {
+            onStatus({
+                step: 'generating_clip',
+                currentClip: sceneIndex,
+                totalClips: 5,
+                currentPrompt: prompt,
+                elapsedSeconds: elapsedSeconds,
+                timeFormatted: timeFormatted,
+                message: `Clip ${sceneIndex}/5: Generating on Google Flow... (${timeFormatted} elapsed)`
+            });
         }
 
         // Check if extension completed
@@ -307,7 +327,8 @@ async function runDailyInfluencerPipeline(options = {}) {
     let plan = options.plan;
     const planFile = path.join(reelStorageDir, 'plan.json');
 
-    if (!plan) {
+    // Only reuse cached plan if NO custom topic was specified
+    if (!plan && !options.customTopic) {
         if (fs.existsSync(planFile)) {
             console.log(`📖 Loading existing plan for today from: ${planFile}`);
             try { plan = JSON.parse(fs.readFileSync(planFile, 'utf8')); } catch (e) {}
@@ -315,9 +336,26 @@ async function runDailyInfluencerPipeline(options = {}) {
     }
 
     if (!plan) {
-        console.log(`Generating new 50s reel script and 5 scene prompts with Gemini...`);
+        console.log(`⚡ Generating 50s reel script and 5 scene prompts with Groq 120B Flagship...`);
+        if (options.onStatusUpdate) {
+            options.onStatusUpdate({
+                step: 'scripting',
+                message: '⚡ Groq 120B Flagship generating 5-scene cinematic script & prompts...',
+                currentClip: 0,
+                totalClips: 5
+            });
+        }
         plan = await generateInfluencerPrompts(options.customTopic || null);
         fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+    }
+
+    if (options.onStatusUpdate) {
+        options.onStatusUpdate({
+            step: 'script_ready',
+            plan: plan,
+            reelTitle: plan.reel_title,
+            message: `✅ Script created by ${plan.engine || 'Groq 120B'}: "${plan.reel_title}" (5 scenes x 10s = 50s)`
+        });
     }
 
     // Load reference model image if configured
@@ -358,9 +396,11 @@ async function runDailyInfluencerPipeline(options = {}) {
 
         if (options.onStatusUpdate) {
             options.onStatusUpdate({
+                step: 'generating_clip',
                 currentClip: clipNum,
                 totalClips: scenes.length,
                 clipTitle: scene.scene_title,
+                currentPrompt: finalClipPrompt,
                 message: `🎬 Clip ${clipNum}/${scenes.length} (${scene.scene_title}) - Queued for Google Flow...`
             });
         }
