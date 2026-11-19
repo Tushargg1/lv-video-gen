@@ -543,9 +543,14 @@ app.get('/api/influencer/status', (req, res) => {
 app.post('/api/influencer/reset', (req, res) => {
     isInfluencerPipelineRunning = false;
     currentJob = null;
-    influencerPipelineStatus = { status: 'idle', message: 'Ready' };
-    console.log('[Influencer] Status manually reset to idle.');
-    res.json({ success: true, message: 'Influencer pipeline reset to idle' });
+    jobResult = null;
+    influencerPipelineStatus = { status: 'idle', message: 'Pipeline stopped by user.' };
+    try {
+        const { cancelPipeline } = require('./influencer_pipeline');
+        cancelPipeline();
+    } catch (e) {}
+    console.log('[Influencer] Pipeline stopped & reset to idle by user.');
+    res.json({ success: true, message: 'Influencer pipeline stopped and reset to idle' });
 });
 
 app.post('/api/influencer/run', (req, res) => {

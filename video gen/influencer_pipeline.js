@@ -8,6 +8,13 @@ const { getConfig, generateInfluencerPrompts } = require('./influencer_prompts')
 const LOCAL_SERVER_PORT = process.env.INFLUENCER_PORT || 3005;
 const LOCAL_SERVER_URL = `http://localhost:${LOCAL_SERVER_PORT}`;
 
+let isPipelineCancelled = false;
+
+function cancelPipeline() {
+    isPipelineCancelled = true;
+    console.log('[Pipeline] 🛑 Cancellation requested by user.');
+}
+
 /**
  * Sleep helper
  */
@@ -114,6 +121,10 @@ async function generateSingle10sClip(prompt, sceneIndex, targetClipPath, referen
     console.log(`⏳ Waiting for Clip ${sceneIndex} generation and 1080p download (up to ${maxWaitMinutes} mins)...`);
 
     for (let loop = 0; loop < maxWaitLoops; loop++) {
+        if (isPipelineCancelled) {
+            console.log(`[Clip ${sceneIndex}/5] Stop requested. Aborting wait loop.`);
+            throw new Error('Pipeline stopped by user');
+        }
         await sleep(5000);
 
         if (loop > 0 && loop % 6 === 0 && onStatus) {
@@ -281,6 +292,7 @@ async function scheduleReelPost(videoUrl, reelPlan, scheduleTimeIso, cloudApiUrl
  * 5. Schedules auto-post for the set time
  */
 async function runDailyInfluencerPipeline(options = {}) {
+    isPipelineCancelled = false;
     console.log(`\n======================================================`);
     console.log(`🌟 STARTING DAILY AI INFLUENCER REEL PIPELINE`);
     console.log(`🎯 TARGET: 1 Reel Daily of 50 Seconds (5 x 10s clips)`);
@@ -313,6 +325,9 @@ async function runDailyInfluencerPipeline(options = {}) {
     const scenes = plan.scenes || [];
 
     for (let i = 0; i < scenes.length; i++) {
+        if (isPipelineCancelled) {
+            throw new Error('Pipeline stopped by user');
+        }
         const scene = scenes[i];
         const clipNum = scene.scene_index || (i + 1);
         const targetClipPath = path.join(reelStorageDir, `clip_${clipNum}.mp4`);
@@ -445,5 +460,6 @@ module.exports = {
     concat5Clips,
     uploadToBlob,
     scheduleReelPost,
-    runDailyInfluencerPipeline
+    runDailyInfluencerPipeline,
+    cancelPipeline
 };

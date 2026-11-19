@@ -119,10 +119,15 @@ export default function InfluencerDashboard() {
   const handleResetPipeline = async () => {
     try {
       await fetch('http://localhost:3005/api/influencer/reset', { method: 'POST' });
+      await fetch('http://localhost:3005/api/job', { method: 'DELETE' }).catch(() => {});
+      await fetch('http://localhost:3005/api/result', { method: 'DELETE' }).catch(() => {});
       setIsGenerating(false);
       setPipelineStatus(null);
-      setStatusMessage('Pipeline reset to idle.');
-    } catch (e) {}
+      setStatusMessage('⏹ Generation stopped by user. Ready.');
+    } catch (e) {
+      setIsGenerating(false);
+      setStatusMessage('⏹ Generation stopped.');
+    }
   };
 
   const handleTriggerGeneration = async () => {
@@ -221,26 +226,35 @@ export default function InfluencerDashboard() {
                 onChange={(e) => handleTopicChange(e.target.value)}
                 className="w-full sm:flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-pink-500/50"
               />
-              <button
-                onClick={handleTriggerGeneration}
-                disabled={isGenerating || !serverOnline}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 text-white shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 transition-all"
-              >
-                {isGenerating ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              
+              {isGenerating ? (
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <div className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl font-semibold text-xs bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center justify-center gap-2">
+                    <svg className="w-4 h-4 animate-spin text-purple-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                       <circle cx="12" cy="12" r="10" strokeWidth="4" className="opacity-25" />
                       <path fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" className="opacity-75" />
                     </svg>
                     Generating 50s Reel...
-                  </>
-                ) : (
-                  <>
-                    <span>⚡</span>
-                    Generate Today's 50s Reel
-                  </>
-                )}
-              </button>
+                  </div>
+                  <button
+                    onClick={handleResetPipeline}
+                    title="Stop generation immediately"
+                    className="px-4 py-2.5 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-500 active:scale-95 text-white shadow-lg shadow-rose-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span>⏹</span>
+                    Stop Generation
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleTriggerGeneration}
+                  disabled={!serverOnline}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 hover:opacity-90 disabled:opacity-50 text-white shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span>⚡</span>
+                  Generate Today's 50s Reel
+                </button>
+              )}
             </div>
 
             {/* Active Pipeline Status Card */}
