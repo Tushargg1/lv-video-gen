@@ -1,10 +1,7 @@
 // Background service worker - uses chrome.debugger for REAL hardware-level mouse/keyboard events
 
 // --- CONFIGURATION ---
-// Change this index (0, 1, 2, etc.) to match the Google account you want to use.
-// Usually 0 is your default account, 1 is your second account, etc.
-const GOOGLE_ACCOUNT_INDEX = 1; 
-const GOOGLE_FLOW_URL = `https://flow.google.com/u/${GOOGLE_ACCOUNT_INDEX}/`;
+const GOOGLE_FLOW_URL = 'https://flow.google.com/';
 // ---------------------
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -229,105 +226,120 @@ async function pollForJobs() {
                         // Clear the job so we don't pick it up twice
                         await fetch(`http://localhost:${activePort}/api/job`, { method: 'DELETE' });
 
-                        // Open flow.google.com and start automation
-                        chrome.tabs.create({ url: GOOGLE_FLOW_URL }, (tab) => {
-                            let attempts = 0;
-                            const trySend = () => {
-                                attempts++;
-                                chrome.tabs.sendMessage(tab.id, {
-                                    action: 'fillPrompt',
-                                    imagePrompt: data.job.imagePrompt,
-                                    videoPrompt: data.job.videoPrompt,
-                                    autoClick: true,
-                                    image: data.job.imageBase64
-                                }, async (response) => {
-                                    if (chrome.runtime.lastError || !response) {
-                                        if (attempts < 25) { // Try for up to 50 seconds
-                                            setTimeout(trySend, 2000);
-                                        } else {
-                                            fetch(`http://localhost:${activePort}/api/result`, {
+                        // Open or reuse flow.google.com and start automation
+                        chrome.tabs.query({ url: "*://flow.google.com/*" }, (existingTabs) => {
+                            const reuseTab = existingTabs && existingTabs.length > 0 ? existingTabs[0] : null;
+
+                            const handleTabAutomation = (tabId, isNewTab) => {
+                                let attempts = 0;
+                                const trySend = () => {
+                                    attempts++;
+                                    chrome.tabs.sendMessage(tabId, {
+                                        action: 'fillPrompt',
+                                        imagePrompt: data.job.imagePrompt,
+                                        videoPrompt: data.job.videoPrompt,
+                                        autoClick: true,
+                                        image: data.job.imageBase64
+                                    }, async (response) => {
+                                        if (chrome.runtime.lastError || !response) {
+                                            if (attempts < 25) { // Try for up to 50 seconds
+                                                setTimeout(trySend, 2000);
+                                            } else {
+                                                fetch(`http://localhost:${activePort}/api/result`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ success: false, error: 'Extension failed to load on Google Flow after 50 seconds. Make sure you are logged in.' })
+                                                }).catch(()=>{});
+                                            }
+                                            return;
+                                        }
+                                        
+                                        // For VIDEO jobs: wait until the .mp4 is FULLY downloaded before reporting success.
+                                        // For IMAGE jobs: report immediately (images download fast as PNG/JPG).
+                                        const isVideoJob = !!(data.job.videoPrompt && !data.job.imagePrompt);
+                                        
+                                        if (isVideoJob && response && response.isNativeDownload) {
+                                            console.log('[BG] Video job detected. Waiting for .mp4 download to complete before reporting result...');
+                                            
+                                            const MAX_WAIT_MS = 10 * 60 * 1000;
+                                            // Allow downloads that started up to 60 seconds ago, because content.js clicks download BEFORE it returns!
+                                            const listenerRegisteredAt = Date.now() - 60000; 
+                                            let completedDownloadPath = null;
+                                            
+                                            await new Promise((resolve) => {
+                                                const listener = (delta) => {
+                                                    if (delta.state && delta.state.current === 'complete') {
+                                                        chrome.downloads.search({ id: delta.id }, (items) => {
+                                                            if (items && items[0]) {
+                                                                const item = items[0];
+                                                                const filename = item.filename || '';
+                                                                // Only accept .mp4/.webm that started AFTER we registered the listener
+                                                                const downloadStarted = new Date(item.startTime).getTime();
+                                                                if ((filename.endsWith('.mp4') || filename.endsWith('.webm')) && downloadStarted >= listenerRegisteredAt) {
+                                                                    console.log('[BG] ✅ .mp4 download complete:', filename);
+                                                                    completedDownloadPath = filename;
+                                                                    chrome.downloads.onChanged.removeListener(listener);
+                                                                    clearTimeout(fallbackTimer);
+                                                                    resolve();
+                                                                } else if (filename.endsWith('.mp4') || filename.endsWith('.webm')) {
+                                                                    console.log('[BG] Ignoring old .mp4 (started before job):', filename, 'started:', item.startTime);
+                                                                }
+                                                            }
+                                                        });
+                                                    }
+                                                };
+                                                
+                                                const fallbackTimer = setTimeout(() => {
+                                                    console.log('[BG] ⚠️ Timeout waiting for .mp4. Proceeding anyway.');
+                                                    chrome.downloads.onChanged.removeListener(listener);
+                                                    resolve();
+                                                }, MAX_WAIT_MS);
+                                                
+                                                chrome.downloads.onChanged.addListener(listener);
+                                            });
+                                            
+                                            console.log('[BG] Posting result to server. File:', completedDownloadPath || 'unknown');
+                                            // Pass the exact file path so server.js can serve it directly
+                                            if (completedDownloadPath) {
+                                                response.completedDownloadPath = completedDownloadPath;
+                                            }
+                                        }
+                                        
+                                        // Send the actual result back to the Dashboard Bridge on its respective port
+                                        try {
+                                            await fetch(`http://localhost:${activePort}/api/result`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ success: false, error: 'Extension failed to load on Google Flow after 50 seconds. Make sure you are logged in.' })
-                                            }).catch(()=>{});
-                                        }
-                                        return;
-                                    }
-                                    
-                                    // For VIDEO jobs: wait until the .mp4 is FULLY downloaded before reporting success.
-                                    // For IMAGE jobs: report immediately (images download fast as PNG/JPG).
-                                    const isVideoJob = !!(data.job.videoPrompt && !data.job.imagePrompt);
-                                    
-                                    if (isVideoJob && response && response.isNativeDownload) {
-                                        console.log('[BG] Video job detected. Waiting for .mp4 download to complete before reporting result...');
+                                                body: JSON.stringify(response)
+                                            });
+                                        } catch(e) {}
                                         
-                                        const MAX_WAIT_MS = 10 * 60 * 1000;
-                                        // Allow downloads that started up to 60 seconds ago, because content.js clicks download BEFORE it returns!
-                                        const listenerRegisteredAt = Date.now() - 60000; 
-                                        let completedDownloadPath = null;
-                                        
-                                        await new Promise((resolve) => {
-                                            const listener = (delta) => {
-                                                if (delta.state && delta.state.current === 'complete') {
-                                                    chrome.downloads.search({ id: delta.id }, (items) => {
-                                                        if (items && items[0]) {
-                                                            const item = items[0];
-                                                            const filename = item.filename || '';
-                                                            // Only accept .mp4/.webm that started AFTER we registered the listener
-                                                            const downloadStarted = new Date(item.startTime).getTime();
-                                                            if ((filename.endsWith('.mp4') || filename.endsWith('.webm')) && downloadStarted >= listenerRegisteredAt) {
-                                                                console.log('[BG] ✅ .mp4 download complete:', filename);
-                                                                completedDownloadPath = filename;
-                                                                chrome.downloads.onChanged.removeListener(listener);
-                                                                clearTimeout(fallbackTimer);
-                                                                resolve();
-                                                            } else if (filename.endsWith('.mp4') || filename.endsWith('.webm')) {
-                                                                console.log('[BG] Ignoring old .mp4 (started before job):', filename, 'started:', item.startTime);
-                                                            }
-                                                        }
-                                                    });
+                                        // CLEANUP: If we created a new tab, close it after 60s. If it was already open, keep it open!
+                                        if (isNewTab) {
+                                            setTimeout(() => {
+                                                try {
+                                                    chrome.tabs.remove(tabId);
+                                                } catch(e) {
+                                                    console.log('[BG] Could not close tab:', e);
                                                 }
-                                            };
-                                            
-                                            const fallbackTimer = setTimeout(() => {
-                                                console.log('[BG] ⚠️ Timeout waiting for .mp4. Proceeding anyway.');
-                                                chrome.downloads.onChanged.removeListener(listener);
-                                                resolve();
-                                            }, MAX_WAIT_MS);
-                                            
-                                            chrome.downloads.onChanged.addListener(listener);
-                                        });
-                                        
-                                        console.log('[BG] Posting result to server. File:', completedDownloadPath || 'unknown');
-                                        // Pass the exact file path so server.js can serve it directly
-                                        if (completedDownloadPath) {
-                                            response.completedDownloadPath = completedDownloadPath;
+                                            }, 60000);
                                         }
-                                    }
-                                    
-                                    // Send the actual result back to the Dashboard Bridge on its respective port
-                                    try {
-                                        await fetch(`http://localhost:${activePort}/api/result`, {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify(response)
-                                        });
-                                    } catch(e) {}
-                                    
-                                    // CLEANUP: Close the tab so we don't end up with 50 Google Flow tabs open!
-                                    // Wait 60 seconds before closing to ensure the image/video has fully started/finished downloading
-                                    setTimeout(() => {
-                                        try {
-                                            chrome.tabs.remove(tab.id);
-                                        } catch(e) {
-                                            console.log('[BG] Could not close tab:', e);
-                                        }
-                                    }, 60000);
-                                });
+                                    });
+                                };
+                                
+                                setTimeout(trySend, isNewTab ? 4000 : 1000);
                             };
-                            
-                            // Wait a few seconds for the page to initially load before the first attempt
-                            setTimeout(trySend, 4000);
+
+                            if (reuseTab) {
+                                console.log('[BG] Reusing existing Google Flow tab:', reuseTab.id);
+                                chrome.tabs.update(reuseTab.id, { active: true });
+                                handleTabAutomation(reuseTab.id, false);
+                            } else {
+                                console.log('[BG] Opening new Google Flow tab...');
+                                chrome.tabs.create({ url: GOOGLE_FLOW_URL }, (newTab) => {
+                                    handleTabAutomation(newTab.id, true);
+                                });
+                            }
                         });
                         break; // Process one job at a time
                     }
