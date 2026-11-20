@@ -659,13 +659,26 @@ app.get('/api/influencer/status', (req, res) => {
     const lastPingSecondsAgo = lastExtensionPing > 0 ? Math.round((now - lastExtensionPing) / 1000) : null;
 
     let latestPlan = null;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const reelDir = path.join(__dirname, 'data', 'influencer_reels', `reel_${todayStr}`);
     try {
-        const todayStr = new Date().toISOString().split('T')[0];
-        const planFile = path.join(__dirname, 'data', 'influencer_reels', `reel_${todayStr}`, 'plan.json');
+        const planFile = path.join(reelDir, 'plan.json');
         if (fs.existsSync(planFile)) {
             latestPlan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
         }
     } catch (e) {}
+
+    const completedClips = [];
+    try {
+        for (let c = 1; c <= 5; c++) {
+            const cPath = path.join(reelDir, `clip_${c}.mp4`);
+            if (fs.existsSync(cPath) && fs.statSync(cPath).size > 50000) {
+                completedClips.push(c);
+            }
+        }
+    } catch (e) {}
+    const finalReelPath = path.join(reelDir, `final_reel_50s_${todayStr}.mp4`);
+    const hasFinalReel = fs.existsSync(finalReelPath);
 
     res.json({
         isRunning: isInfluencerPipelineRunning,
@@ -676,6 +689,8 @@ app.get('/api/influencer/status', (req, res) => {
             lastPingTime: lastExtensionPing ? new Date(lastExtensionPing).toLocaleTimeString() : null
         },
         plan: latestPlan,
+        completedClips,
+        hasFinalReel,
         logs: pipelineLogs.slice(-60)
     });
 });
@@ -702,17 +717,17 @@ app.post('/api/influencer/run', (req, res) => {
     if (isInfluencerPipelineRunning) {
         return res.status(409).json({ success: false, message: 'Influencer pipeline is already running!' });
     }
-    const { customTopic } = req.body || {};
+    const { customTopic, forceNewPlan } = req.body || {};
     isInfluencerPipelineRunning = true;
     influencerPipelineStatus = { 
         status: 'running', 
-        message: 'Initializing 50s reel script and prompts with Groq 120B Flagship...',
+        message: forceNewPlan ? 'Planning brand new 50s reel script with Groq 120B Flagship...' : 'Starting reel pipeline from saved storyboard...',
         customTopic: customTopic || 'Autonomous Daily Theme',
         currentClip: 0,
         totalClips: 5,
         updatedAt: new Date().toLocaleTimeString()
     };
-    addPipelineLog(`🚀 Triggered 50-second reel generation: "${customTopic || 'Autonomous Daily Theme'}"`, 'action');
+    addPipelineLog(forceNewPlan ? `🚀 Generating brand new 50s reel storyboard: "${customTopic || 'Daily Theme'}"` : `🚀 Running reel pipeline from saved storyboard...`, 'action');
 
     res.json({ success: true, message: '50-second reel generation pipeline started!' });
 
@@ -720,6 +735,7 @@ app.post('/api/influencer/run', (req, res) => {
     const { runDailyInfluencerPipeline } = require('./influencer_pipeline');
     runDailyInfluencerPipeline({ 
         customTopic,
+        forceNewPlan: !!forceNewPlan,
         onStatusUpdate: (update) => {
             influencerPipelineStatus = {
                 status: 'running',

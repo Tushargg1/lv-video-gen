@@ -91,6 +91,8 @@ export default function InfluencerDashboard() {
     lastPingTime: string | null;
   } | null>(null);
   const [showPromptDetails, setShowPromptDetails] = useState(true);
+  const [completedClips, setCompletedClips] = useState<number[]>([]);
+  const [selectedClipIndex, setSelectedClipIndex] = useState<number>(1);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchConfig = async () => {
@@ -306,6 +308,9 @@ export default function InfluencerDashboard() {
           setPipelineStatus(data.status);
           if (data.extension) setExtensionStatus(data.extension);
           if (data.plan) setActivePlan(data.plan);
+          if (data.completedClips && Array.isArray(data.completedClips)) {
+            setCompletedClips(data.completedClips);
+          }
           if (data.logs && Array.isArray(data.logs)) {
             setLiveLogs(data.logs);
           }
@@ -360,9 +365,9 @@ export default function InfluencerDashboard() {
     }
   };
 
-  const handleTriggerGeneration = async () => {
+  const handleTriggerGeneration = async (forceNew: boolean = false) => {
     setIsGenerating(true);
-    setStatusMessage('Triggering 50s Reel Generation Pipeline...');
+    setStatusMessage(forceNew ? '⚡ Groq 120B planning brand new 50s reel script...' : '🚀 Generating / Resuming clips from saved storyboard...');
     const ports = [3005, 3001];
     let started = false;
     for (const port of ports) {
@@ -370,7 +375,10 @@ export default function InfluencerDashboard() {
         const res = await fetch(`http://localhost:${port}/api/influencer/run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ customTopic: customTopic.trim() || null })
+          body: JSON.stringify({ 
+            customTopic: customTopic.trim() || null,
+            forceNewPlan: forceNew
+          })
         });
         if (res.ok) {
           setStatusMessage('🚀 Generation started! The extension will generate 5 x 10s clips, merge them into 50s, and auto-schedule.');
@@ -739,14 +747,25 @@ export default function InfluencerDashboard() {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={handleTriggerGeneration}
-                  disabled={!serverOnline}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-lg font-semibold text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <span>⚡</span>
-                  Generate Today's 50s Reel
-                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={() => handleTriggerGeneration(false)}
+                    disabled={!serverOnline}
+                    className="flex-1 sm:flex-initial px-5 py-2.5 rounded-lg font-semibold text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <span>⚡</span>
+                    {activePlan ? (completedClips.length > 0 ? `Continue Making Clips (${completedClips.length}/5 Saved)` : "Make All 5 Clips (Saved Plan)") : "Generate Today's 50s Reel"}
+                  </button>
+                  <button
+                    onClick={() => handleTriggerGeneration(true)}
+                    disabled={!serverOnline}
+                    title="Plan a brand new 5-clip storyboard with Groq 120B Flagship"
+                    className="px-4 py-2.5 rounded-lg font-medium text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>✨</span>
+                    New Story Idea
+                  </button>
+                </div>
               )}
             </div>
 
@@ -857,42 +876,47 @@ export default function InfluencerDashboard() {
             </div>
 
             {/* 5-Clip Sequential Visual Progress Stepper */}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
-                <span>🎬 5-Clip Reel Progress</span>
+                <span>🎬 5-Clip Reel Architecture (Click any clip to view saved prompt)</span>
                 <span className="text-blue-600 font-bold">
-                  {pipelineStatus?.currentClip ? `Processing Clip ${pipelineStatus.currentClip} of 5` : (isGenerating ? 'Script Generation' : 'Ready')}
+                  {completedClips.length === 5 ? 'All 5 Clips Saved on Disk!' : (pipelineStatus?.currentClip ? `Generating Clip ${pipelineStatus.currentClip} of 5` : `${completedClips.length}/5 Clips Saved`)}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                 {[
-                  { index: 1, range: '0-10s', title: 'The Hook', defaultPrompt: 'Arresting visual entrance & scroll-stopping eye contact' },
-                  { index: 2, range: '10-20s', title: 'Progression', defaultPrompt: 'Dynamic camera tracking shot moving through city aesthetic' },
-                  { index: 3, range: '20-30s', title: 'Showcase', defaultPrompt: 'Medium close-up detail highlight of outfit & styling' },
-                  { index: 4, range: '30-40s', title: 'Atmosphere', defaultPrompt: 'Cinematic 360 orbital dolly shot with sunset/neon glows' },
-                  { index: 5, range: '40-50s', title: 'Outro & CTA', defaultPrompt: 'Direct camera smile, iconic hero pose & sign-off' }
+                  { index: 1, range: '0-10s', title: 'The Hook' },
+                  { index: 2, range: '10-20s', title: 'Progression & Movement' },
+                  { index: 3, range: '20-30s', title: 'Detail Showcase' },
+                  { index: 4, range: '30-40s', title: 'Atmosphere & Transition' },
+                  { index: 5, range: '40-50s', title: 'Outro & Final Pose' }
                 ].map((step) => {
                   const cur = pipelineStatus?.currentClip || 0;
                   const isCur = isGenerating && cur === step.index;
-                  const isDone = cur > step.index || pipelineStatus?.step === 'concatenating' || pipelineStatus?.step === 'completed';
+                  const isSavedOnDisk = completedClips.includes(step.index);
+                  const isDone = isSavedOnDisk || (cur > step.index) || pipelineStatus?.step === 'concatenating' || pipelineStatus?.step === 'completed';
+                  const isSelected = selectedClipIndex === step.index;
 
                   return (
                     <div
                       key={step.index}
-                      className={`p-3 rounded-xl border transition-all ${
+                      onClick={() => setSelectedClipIndex(step.index)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer relative ${
+                        isSelected ? 'ring-2 ring-blue-600 shadow-sm' : ''
+                      } ${
                         isCur
-                          ? 'bg-blue-50/70 border-blue-500 shadow-sm'
-                          : isDone
-                          ? 'bg-emerald-50/60 border-emerald-300'
-                          : 'bg-slate-50 border-slate-200 opacity-70'
+                          ? 'bg-blue-50/80 border-blue-500'
+                          : isSavedOnDisk
+                          ? 'bg-emerald-50/70 border-emerald-300'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1.5">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                           isCur
                             ? 'bg-blue-600 text-white'
-                            : isDone
+                            : isSavedOnDisk
                             ? 'bg-emerald-600 text-white'
                             : 'bg-slate-200 text-slate-700'
                         }`}>
@@ -911,12 +935,16 @@ export default function InfluencerDashboard() {
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
                             Generating ({pipelineStatus?.timeFormatted || '0s'})
                           </span>
+                        ) : isSavedOnDisk ? (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+                            ✓ Saved to Disk
+                          </span>
                         ) : isDone ? (
                           <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                            ✓ Downloaded
+                            ✓ Complete
                           </span>
                         ) : (
-                          <span className="text-slate-400">⏳ Queued</span>
+                          <span className="text-slate-400">⏳ Saved in Plan</span>
                         )}
                       </div>
                     </div>
@@ -925,40 +953,72 @@ export default function InfluencerDashboard() {
               </div>
             </div>
 
-            {/* Active Prompt Inspector */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                  <span>🎯</span> Active Prompt Sent to Google Flow (Clip {pipelineStatus?.currentClip || 1}/5)
-                </span>
-                <button
-                  onClick={() => setShowPromptDetails(!showPromptDetails)}
-                  className="text-xs text-blue-600 hover:underline cursor-pointer"
-                >
-                  {showPromptDetails ? 'Hide Prompt' : 'Show Full Prompt'}
-                </button>
+            {/* Saved Storyboard Prompt Inspector (Inspect any clip) */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                    <span>🎯</span> Clip {selectedClipIndex}/5 Prompt: <strong className="text-blue-700 font-semibold ml-1">"{activePlan?.scenes?.[selectedClipIndex - 1]?.scene_title || 'Scene ' + selectedClipIndex}"</strong>
+                  </span>
+                  {completedClips.includes(selectedClipIndex) && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                      ✓ MP4 Saved on Disk
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedClipIndex(idx)}
+                      className={`px-2.5 py-1 text-[11px] rounded font-semibold transition-colors ${
+                        selectedClipIndex === idx
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : completedClips.includes(idx)
+                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      Clip {idx} {completedClips.includes(idx) ? '✓' : ''}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowPromptDetails(!showPromptDetails)}
+                    className="ml-2 text-xs text-blue-600 hover:underline cursor-pointer"
+                  >
+                    {showPromptDetails ? 'Hide' : 'Expand'}
+                  </button>
+                </div>
               </div>
 
               {showPromptDetails && (
-                <div className="p-3 rounded-lg bg-white border border-slate-200 text-xs text-slate-800 font-sans leading-relaxed">
-                  {pipelineStatus?.currentPrompt ||
-                    activePlan?.scenes?.[(pipelineStatus?.currentClip || 1) - 1]?.video_prompt ||
-                    (isGenerating ? 'Generating script with Groq 120B Flagship...' : 'Click "Generate Today\'s 50s Reel" to launch.')}
+                <div className="p-3.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-800 font-sans leading-relaxed shadow-sm">
+                  {activePlan?.scenes?.[selectedClipIndex - 1]?.video_prompt ||
+                    (selectedClipIndex === (pipelineStatus?.currentClip || 1) ? pipelineStatus?.currentPrompt : null) ||
+                    (isGenerating ? 'Generating script with Groq 120B Flagship...' : 'Click "Make All 5 Clips" or enter an idea to generate all 5 prompts.')}
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500">
-                <span>Prompt Structure:</span>
-                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
-                  [Model Face Photo: {referenceImage ? 'Active' : 'Default'}]
-                </span>
-                <span>+</span>
-                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
-                  [Identity Prompt]
-                </span>
-                <span>+</span>
-                <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
-                  [10s Story Script]
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-500">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span>Prompt Pipeline:</span>
+                  <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                    [Model Photo: {referenceImage ? 'Active' : 'Default'}]
+                  </span>
+                  <span>+</span>
+                  <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                    [Identity Prompt]
+                  </span>
+                  <span>+</span>
+                  <span className="px-2 py-0.5 rounded bg-white text-slate-700 border border-slate-200 font-mono text-[10px]">
+                    [10s Scene Prompt]
+                  </span>
+                </div>
+
+                <span className="text-[10px] text-slate-400">
+                  {activePlan?.engine ? `Generated via ${activePlan.engine}` : 'Groq 120B Flagship'}
                 </span>
               </div>
             </div>

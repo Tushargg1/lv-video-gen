@@ -323,20 +323,23 @@ async function runDailyInfluencerPipeline(options = {}) {
     const reelStorageDir = path.join(__dirname, 'data', 'influencer_reels', `reel_${todayStr}`);
     if (!fs.existsSync(reelStorageDir)) fs.mkdirSync(reelStorageDir, { recursive: true });
 
-    // Step 1: Generate or load prompts
+    // Step 1: Load saved plan or generate a new one
     let plan = options.plan;
     const planFile = path.join(reelStorageDir, 'plan.json');
 
-    // Only reuse cached plan if NO custom topic was specified
-    if (!plan && !options.customTopic) {
-        if (fs.existsSync(planFile)) {
-            console.log(`📖 Loading existing plan for today from: ${planFile}`);
-            try { plan = JSON.parse(fs.readFileSync(planFile, 'utf8')); } catch (e) {}
-        }
+    // Reuse existing saved plan & prompts unless user explicitly requested a brand new plan
+    if (!plan && fs.existsSync(planFile) && !options.forceNewPlan) {
+        try {
+            const cachedPlan = JSON.parse(fs.readFileSync(planFile, 'utf8'));
+            if (cachedPlan.scenes && cachedPlan.scenes.length === 5) {
+                console.log(`📖 Reusing saved 5-scene storyboard for today: "${cachedPlan.reel_title}"`);
+                plan = cachedPlan;
+            }
+        } catch (e) {}
     }
 
     if (!plan) {
-        console.log(`⚡ Generating 50s reel script and 5 scene prompts with Groq 120B Flagship...`);
+        console.log(`⚡ Generating new 50s reel script and 5 scene prompts with Groq 120B Flagship...`);
         if (options.onStatusUpdate) {
             options.onStatusUpdate({
                 step: 'scripting',
@@ -347,6 +350,7 @@ async function runDailyInfluencerPipeline(options = {}) {
         }
         plan = await generateInfluencerPrompts(options.customTopic || null);
         fs.writeFileSync(planFile, JSON.stringify(plan, null, 2));
+        console.log(`💾 Storyboard and all 5 scene prompts saved permanently to: ${planFile}`);
     }
 
     if (options.onStatusUpdate) {
@@ -354,7 +358,7 @@ async function runDailyInfluencerPipeline(options = {}) {
             step: 'script_ready',
             plan: plan,
             reelTitle: plan.reel_title,
-            message: `✅ Script created by ${plan.engine || 'Groq 120B'}: "${plan.reel_title}" (5 scenes x 10s = 50s)`
+            message: `✅ Saved storyboard ready: "${plan.reel_title}" (5 scenes x 10s = 50s total)`
         });
     }
 
