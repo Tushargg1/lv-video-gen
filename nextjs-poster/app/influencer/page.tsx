@@ -93,6 +93,8 @@ export default function InfluencerDashboard() {
   const [showPromptDetails, setShowPromptDetails] = useState(true);
   const [completedClips, setCompletedClips] = useState<number[]>([]);
   const [selectedClipIndex, setSelectedClipIndex] = useState<number>(1);
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchConfig = async () => {
@@ -307,7 +309,16 @@ export default function InfluencerDashboard() {
           foundOnline = true;
           setPipelineStatus(data.status);
           if (data.extension) setExtensionStatus(data.extension);
-          if (data.plan) setActivePlan(data.plan);
+          if (data.plan) {
+            setActivePlan(data.plan);
+            // Ensure added prompt/topic is preserved until the whole video is made
+            if (!customTopic && data.plan.topic) {
+              setCustomTopic(data.plan.topic);
+              localStorage.setItem('influencer_topic', data.plan.topic);
+            }
+          } else {
+            setActivePlan(null);
+          }
           if (data.completedClips && Array.isArray(data.completedClips)) {
             setCompletedClips(data.completedClips);
           }
@@ -358,10 +369,49 @@ export default function InfluencerDashboard() {
       await fetch('http://localhost:3005/api/result', { method: 'DELETE' }).catch(() => {});
       setIsGenerating(false);
       setPipelineStatus(null);
-      setStatusMessage('⏹ Generation stopped by user. Ready.');
+      setStatusMessage('⏹ Generation stopped by user. Saved clips and storyboard preserved on disk.');
     } catch (e) {
       setIsGenerating(false);
       setStatusMessage('⏹ Generation stopped.');
+    }
+  };
+
+  const handleDiscardPlan = async () => {
+    setIsDiscarding(true);
+    try {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          await fetch(`http://localhost:${port}/api/influencer/discard-plan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ removeReferenceImage: true })
+          });
+        } catch (e) {}
+      }
+      await fetch('/api/influencer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'discard_plan', removeReferenceImage: true })
+      }).catch(() => {});
+
+      // Completely clear local state for a fresh slate
+      setCustomTopic('');
+      localStorage.removeItem('influencer_topic');
+      setReferenceImage('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setActivePlan(null);
+      setCompletedClips([]);
+      setIsGenerating(false);
+      setPipelineStatus(null);
+      setShowDiscardConfirm(false);
+      setStatusMessage('🗑️ Clip idea completely removed: Storyboard prompts, clips, custom prompt, and reference image cleared.');
+      setTimeout(() => setStatusMessage(''), 6000);
+    } catch (err: any) {
+      console.error('Failed to discard clip idea:', err);
+      setStatusMessage('Error removing clip idea: ' + err.message);
+    } finally {
+      setIsDiscarding(false);
     }
   };
 
@@ -747,7 +797,7 @@ export default function InfluencerDashboard() {
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
                   <button
                     onClick={() => handleTriggerGeneration(false)}
                     disabled={!serverOnline}
@@ -765,6 +815,16 @@ export default function InfluencerDashboard() {
                     <span>✨</span>
                     New Story Idea
                   </button>
+                  {(activePlan || customTopic || referenceImage) && (
+                    <button
+                      onClick={() => setShowDiscardConfirm(true)}
+                      title="Completely remove this clip idea, all 5 clip prompts, downloaded clips, topic prompt, and reference image"
+                      className="px-3.5 py-2.5 rounded-lg font-medium text-xs bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>🗑️</span>
+                      Remove Clip Idea
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -872,16 +932,35 @@ export default function InfluencerDashboard() {
                     ⏹ Stop
                   </button>
                 )}
+
+                {!isGenerating && activePlan && (
+                  <button
+                    onClick={() => setShowDiscardConfirm(true)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <span>🗑️</span>
+                    <span>Remove Clip Idea</span>
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Storyboard Status Notice */}
             {activePlan && (
-              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
-                <span className="text-base leading-none mt-0.5">💡</span>
-                <div className="flex-1">
-                  <strong className="font-semibold">Storyboard Locked & Preserved:</strong> All 5 scene prompts for this reel idea are saved in <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-blue-800">plan.json</code>. Prompts are never regenerated on each clip. Clicking <strong>"Make All 5 Clips"</strong> generates only missing clips sequentially until all 5 exist on disk, then automatically stitches them with FFmpeg into your final 50s reel.
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start justify-between gap-2.5">
+                <div className="flex items-start gap-2.5 flex-1">
+                  <span className="text-base leading-none mt-0.5">💡</span>
+                  <div className="flex-1">
+                    <strong className="font-semibold">Storyboard Locked & Preserved:</strong> All 5 scene prompts for this reel idea are saved in <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-blue-800">plan.json</code>. Your added prompt and image remain strictly intact until the whole 50s video is made.
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDiscardConfirm(true)}
+                  className="px-2.5 py-1 text-[11px] rounded bg-white hover:bg-red-50 text-red-600 border border-red-200 font-semibold shrink-0 cursor-pointer transition-colors"
+                >
+                  🗑️ Remove Idea
+                </button>
               </div>
             )}
 
@@ -1175,6 +1254,55 @@ export default function InfluencerDashboard() {
             </div>
           )}
         </div>
+
+        {/* Confirmation Modal to Completely Remove Clip Idea */}
+        {showDiscardConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-start gap-3">
+                <span className="p-2.5 rounded-full bg-red-100 text-red-600 text-xl shrink-0">
+                  🗑️
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Completely Remove Clip Idea?
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    This will permanently delete this clip idea and all associated data:
+                  </p>
+                  <ul className="text-xs text-slate-500 mt-2 space-y-1 list-disc list-inside">
+                    <li>All 5 clip prompts in <code className="bg-slate-100 px-1 py-0.5 rounded text-[11px] font-mono">plan.json</code></li>
+                    <li>Any partially generated clips on disk</li>
+                    <li>Your custom topic prompt</li>
+                    <li>Your attached reference model photo</li>
+                  </ul>
+                  <p className="text-xs text-slate-700 font-medium mt-3">
+                    You will start with a 100% clean slate for your next video idea.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowDiscardConfirm(false)}
+                  disabled={isDiscarding}
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDiscardPlan}
+                  disabled={isDiscarding}
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-sm flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isDiscarding ? 'Removing Idea...' : 'Yes, Completely Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

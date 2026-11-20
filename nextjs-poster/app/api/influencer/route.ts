@@ -60,6 +60,24 @@ export async function POST(request: Request) {
       }
     }
 
+    if (action === 'discard_plan') {
+      const ports = [3005, 3001];
+      for (const port of ports) {
+        try {
+          const res = await fetch(`http://localhost:${port}/api/influencer/discard-plan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          if (res.ok) {
+            const data = await res.json();
+            return NextResponse.json(data);
+          }
+        } catch (e) {}
+      }
+      return NextResponse.json({ success: true, message: 'Discard command sent' });
+    }
+
     if (action === 'update_time' || action === 'update_config') {
       const ports = [3005, 3001];
       for (const port of ports) {

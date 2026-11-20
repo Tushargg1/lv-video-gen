@@ -704,13 +704,70 @@ app.post('/api/influencer/reset', (req, res) => {
     currentJob = null;
     jobResult = null;
     influencerPipelineStatus = { status: 'idle', message: 'Pipeline stopped by user.' };
-    addPipelineLog('⏹ Pipeline stopped by user. Resetting to idle state.', 'warn');
+    addPipelineLog('⏹ Pipeline stopped by user. Preserving saved clips and storyboard.', 'warn');
     try {
         const { cancelPipeline } = require('./influencer_pipeline');
         cancelPipeline();
     } catch (e) {}
     console.log('[Influencer] Pipeline stopped & reset to idle by user.');
     res.json({ success: true, message: 'Influencer pipeline stopped and reset to idle' });
+});
+
+app.post('/api/influencer/discard-plan', (req, res) => {
+    try {
+        const { removeReferenceImage = true } = req.body || {};
+        
+        // 1. Stop any running pipeline and clear pending extension jobs
+        isInfluencerPipelineRunning = false;
+        currentJob = null;
+        jobResult = null;
+        influencerPipelineStatus = { status: 'idle', message: 'Clip idea and storyboard discarded.' };
+        try {
+            const { cancelPipeline } = require('./influencer_pipeline');
+            cancelPipeline();
+        } catch (e) {}
+
+        // 2. Clear today's saved plan and any partially generated clips from disk
+        const todayStr = new Date().toISOString().split('T')[0];
+        const reelDir = path.join(__dirname, 'data', 'influencer_reels', `reel_${todayStr}`);
+        if (fs.existsSync(reelDir)) {
+            const files = fs.readdirSync(reelDir);
+            for (const file of files) {
+                try {
+                    fs.unlinkSync(path.join(reelDir, file));
+                } catch (e) {}
+            }
+            try {
+                fs.rmdirSync(reelDir);
+            } catch (e) {}
+            console.log(`[Influencer] Deleted reel folder and all clip files: ${reelDir}`);
+        }
+
+        // 3. Remove user reference image if requested
+        if (removeReferenceImage) {
+            const configPath = path.join(__dirname, 'influencer_config.json');
+            if (fs.existsSync(configPath)) {
+                try {
+                    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                    config.reference_image_base64 = '';
+                    config.reference_image_path = '';
+                    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+                } catch (e) {}
+            }
+            const imgPath = path.join(__dirname, 'data', 'reference_model.jpg');
+            if (fs.existsSync(imgPath)) {
+                try { fs.unlinkSync(imgPath); } catch (e) {}
+            }
+            console.log('[Influencer] Reference model photo removed on clip idea discard.');
+        }
+
+        addPipelineLog('🗑️ Clip idea discarded: All 5 scene prompts, downloaded clips, topic prompt, and reference image removed.', 'warn');
+        console.log('[Influencer] Clip idea and all associated data completely discarded by user.');
+        res.json({ success: true, message: 'Clip idea and all associated prompts, clips, and image completely removed.' });
+    } catch (err) {
+        console.error('[Influencer] Error discarding clip idea:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 app.post('/api/influencer/run', (req, res) => {
