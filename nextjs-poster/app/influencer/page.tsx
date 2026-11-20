@@ -821,7 +821,7 @@ export default function InfluencerDashboard() {
         </div>
 
         {/* Live Real-Time Production Control Room */}
-        {(isGenerating || liveLogs.length > 0) && (
+        {(isGenerating || liveLogs.length > 0 || activePlan) && (
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             
             {/* Top Control Bar */}
@@ -831,14 +831,14 @@ export default function InfluencerDashboard() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-900 text-sm">
-                      {isGenerating ? '🔴 LIVE PIPELINE IN PROGRESS' : 'PIPELINE ARCHIVE'}
+                      {isGenerating ? '🔴 LIVE PIPELINE IN PROGRESS' : 'SAVED STORYBOARD ARCHIVE'}
                     </span>
                     <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                      {customTopic || pipelineStatus?.customTopic || "Today's Theme"}
+                      {activePlan?.reel_title || customTopic || pipelineStatus?.customTopic || "Today's Theme"}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Generating 5 sequential 10s clips → Stitching with FFmpeg into 50s vertical reel
+                    5 sequential 10s clips (50s total) → Stitch with FFmpeg into 1080x1920 vertical reel
                   </p>
                 </div>
               </div>
@@ -874,6 +874,16 @@ export default function InfluencerDashboard() {
                 )}
               </div>
             </div>
+
+            {/* Storyboard Status Notice */}
+            {activePlan && (
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+                <span className="text-base leading-none mt-0.5">💡</span>
+                <div className="flex-1">
+                  <strong className="font-semibold">Storyboard Locked & Preserved:</strong> All 5 scene prompts for this reel idea are saved in <code className="bg-white/80 px-1 py-0.5 rounded font-mono text-[11px] text-blue-800">plan.json</code>. Prompts are never regenerated on each clip. Clicking <strong>"Make All 5 Clips"</strong> generates only missing clips sequentially until all 5 exist on disk, then automatically stitches them with FFmpeg into your final 50s reel.
+                </div>
+              </div>
+            )}
 
             {/* 5-Clip Sequential Visual Progress Stepper */}
             <div className="space-y-2">

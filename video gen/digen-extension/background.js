@@ -242,13 +242,20 @@ async function pollForJobs() {
                                         image: data.job.imageBase64
                                     }, async (response) => {
                                         if (chrome.runtime.lastError || !response) {
-                                            if (attempts < 25) { // Try for up to 50 seconds
+                                            // Auto-inject content script if receiving end was not yet ready or disconnected
+                                            if (attempts === 2 || attempts === 5 || attempts === 10) {
+                                                chrome.scripting.executeScript({
+                                                    target: { tabId: tabId },
+                                                    files: ['content.js']
+                                                }).catch(() => {});
+                                            }
+                                            if (attempts < 30) { // Try for up to 60 seconds
                                                 setTimeout(trySend, 2000);
                                             } else {
                                                 fetch(`http://localhost:${activePort}/api/result`, {
                                                     method: 'POST',
                                                     headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ success: false, error: 'Extension failed to load on Google Flow after 50 seconds. Make sure you are logged in.' })
+                                                    body: JSON.stringify({ success: false, error: 'Extension failed to connect to Google Flow. Please ensure Google Flow tab is open and you are logged in.' })
                                                 }).catch(()=>{});
                                             }
                                             return;
