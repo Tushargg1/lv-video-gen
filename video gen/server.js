@@ -75,7 +75,12 @@ app.delete('/api/job', (req, res) => {
 
 app.post('/api/result', (req, res) => {
     jobResult = req.body;
-    console.log(`\n🎉 Received result from extension! (success: ${jobResult.success})`);
+    console.log(`\n🎉 Received result from extension:`, JSON.stringify(jobResult));
+    if (jobResult.success === false) {
+        addPipelineLog(`Extension error: ${jobResult.error || 'Unknown extension error'}`, 'error');
+    } else {
+        addPipelineLog(`Extension reported completion! Checking Downloads folder for .mp4...`, 'success');
+    }
     res.json({ success: true });
 });
 
